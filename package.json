@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "start:lan": "node index.js --lan",
     "dev": "node --watch index.js",
     "test": "node --test test/"
   },

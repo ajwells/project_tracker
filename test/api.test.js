@@ -352,7 +352,7 @@ test('live-update stream announces new revisions', async () => {
   controller.abort();
 });
 
-test('password protection and local-only host checks', async () => {
+test('password protection, and requests addressed to a network address', async () => {
   const locked = createApp({ dataFile: join(dir, 'locked.json'), password: 's3cret' });
   await new Promise((done) => locked.server.listen(0, '127.0.0.1', done));
   const url = `http://127.0.0.1:${locked.server.address().port}/api/state`;
@@ -366,23 +366,12 @@ test('password protection and local-only host checks', async () => {
     await locked.close();
   }
   const { request } = await import('node:http');
+  // Phones reach the server through the computer's network address.
   const status = await new Promise((done, fail) => {
-    request({ host: '127.0.0.1', port: new URL(base).port, path: '/api/state', headers: { Host: 'evil.example' } }, (res) => {
+    request({ host: '127.0.0.1', port: new URL(base).port, path: '/api/state', headers: { Host: '192.168.1.20:3000' } }, (res) => {
       res.resume();
       done(res.statusCode);
     }).on('error', fail).end();
   });
-  assert.equal(status, 403);
-
-  // In LAN mode the same request is served, because phones use the computer's address.
-  const shared = createApp({ dataFile: join(dir, 'lan.json'), lan: true, password: '' });
-  await new Promise((done) => shared.server.listen(0, '127.0.0.1', done));
-  const lanStatus = await new Promise((done, fail) => {
-    request({ host: '127.0.0.1', port: shared.server.address().port, path: '/api/state', headers: { Host: '192.168.1.20:3000' } }, (res) => {
-      res.resume();
-      done(res.statusCode);
-    }).on('error', fail).end();
-  });
-  await shared.close();
-  assert.equal(lanStatus, 200);
+  assert.equal(status, 200);
 });

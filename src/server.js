@@ -93,7 +93,7 @@ function isAuthorized(req, password) {
   return timingSafeEqual(sha(supplied), sha(password));
 }
 
-export function createApp({ dataFile, lan = false, password = process.env.APP_PASSWORD } = {}) {
+export function createApp({ dataFile, password = process.env.APP_PASSWORD } = {}) {
   const store = new Store(dataFile ?? process.env.DATA_FILE ?? join(ROOT, 'data', 'store.json'));
   const sseClients = new Set();
 
@@ -194,12 +194,7 @@ export function createApp({ dataFile, lan = false, password = process.env.APP_PA
     try {
       const url = new URL(req.url, 'http://localhost');
       const hostHeader = (req.headers.host || '').toLowerCase();
-      const hostname = hostHeader.replace(/:\d+$/, '');
 
-      // Blocks DNS rebinding: in local mode only local hostnames are served.
-      if (!lan && !['localhost', '127.0.0.1', '[::1]'].includes(hostname)) {
-        return sendJson(res, 403, { error: 'This server only accepts local connections. Start it with --lan to share it.' });
-      }
       if (!isAuthorized(req, password)) {
         return sendJson(res, 401, { error: 'Password required.' }, { 'WWW-Authenticate': 'Basic realm="Project Tracker", charset="UTF-8"' });
       }
@@ -244,9 +239,8 @@ async function readJsonOptional(req) {
   return {};
 }
 
-export function startServer({ lan = false, port = Number(process.env.PORT) || 3000 } = {}) {
-  const host = lan ? '0.0.0.0' : '127.0.0.1';
-  const { server } = createApp({ lan });
+export function startServer({ port = Number(process.env.PORT) || 3000 } = {}) {
+  const { server } = createApp();
   server.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
       console.error(`Port ${port} is already in use. Set the PORT environment variable to use another one.`);
@@ -254,20 +248,16 @@ export function startServer({ lan = false, port = Number(process.env.PORT) || 30
     }
     throw error;
   });
-  server.listen(port, host, () => {
+  server.listen(port, '0.0.0.0', () => {
     console.log(`\n  Project Tracker is running\n\n  This computer:  http://localhost:${port}`);
-    if (lan) {
-      for (const list of Object.values(networkInterfaces())) {
-        for (const net of list ?? []) {
-          if (net.family === 'IPv4' && !net.internal) console.log(`  Your network:   http://${net.address}:${port}`);
-        }
+    for (const list of Object.values(networkInterfaces())) {
+      for (const net of list ?? []) {
+        if (net.family === 'IPv4' && !net.internal) console.log(`  Your network:   http://${net.address}:${port}`);
       }
-      if (!process.env.APP_PASSWORD) {
-        console.log('\n  Warning: anyone on this network can open and edit your projects.');
-        console.log('  Set the APP_PASSWORD environment variable to require a password.');
-      }
-    } else {
-      console.log('  To open it on your phone, restart with: npm run start:lan');
+    }
+    if (!process.env.APP_PASSWORD) {
+      console.log('\n  Warning: anyone on this network can open and edit your projects.');
+      console.log('  Set the APP_PASSWORD environment variable to require a password.');
     }
     console.log('');
   });

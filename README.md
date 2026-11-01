@@ -16,14 +16,13 @@ In WebStorm, open `package.json` and click the run arrow next to `start`. If `no
 
 | Setting | What it does |
 | --- | --- |
-| `npm run start:lan` | Shares the app on your network, so a phone can open it |
 | `PORT=8080` | Uses a different port (default 3000) |
 | `APP_PASSWORD=...` | Requires a password |
 | `DATA_FILE=path` | Stores data somewhere else (default `data/store.json`) |
 
 ### Opening it on your phone
 
-Run `npm run start:lan` and open the "Your network" address it prints. Anyone on that network can then open and edit your projects, so set `APP_PASSWORD` first on any network you don't fully trust. The password is sent without encryption over plain HTTP, so it won't protect you on a public network or the open internet. Use an HTTPS proxy for those.
+The server listens on all network interfaces, so open the "Your network" address it prints at startup. Anyone on that network can also open and edit your projects, so set `APP_PASSWORD` first on any network you don't fully trust. The password is sent without encryption over plain HTTP, so it won't protect you on a public network or the open internet. Use an HTTPS proxy for those.
 
 Browsers only allow copying images from HTTPS or localhost pages. Over a plain network address, use the PNG or PowerPoint download instead.
 
