@@ -1,0 +1,15 @@
+{
+  "name": "project_tracker",
+  "version": "1.0.0",
+  "description": "Multi-project planner with dependencies, Gantt charts, timelines and PowerPoint export.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "start:lan": "node index.js --lan",
+    "dev": "node --watch index.js",
+    "test": "node --test test/"
+  },
+  "engines": { "node": ">=20" },
+  "private": true
+}
