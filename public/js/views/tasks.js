@@ -64,7 +64,12 @@ export function renderTasks(view, project) {
       input.value = '';
       ctx.focusAfter = '#quick-add';
       const saved = await api('POST', `/api/projects/${project.id}/tasks`, { name, milestone });
-      if (!saved) document.getElementById('quick-add').value = name;
+      if (!saved) {
+        document.getElementById('quick-add').value = name;
+        return;
+      }
+      // New tasks go last in the list, so bring the end of the list into view to show it.
+      for (const el of document.querySelectorAll('.view, .table-wrap')) el.scrollTop = el.scrollHeight;
     },
   },
   h('input', { type: 'text', id: 'quick-add', name: 'name', placeholder: 'Add a task and press Enter', 'aria-label': 'New task name', autocomplete: 'off' }),

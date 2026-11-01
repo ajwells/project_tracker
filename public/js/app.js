@@ -128,7 +128,8 @@ async function loadSample() {
 function renderMain(route) {
   rememberScroll();
   const mode = currentMode();
-  const view = h('div', { class: 'view' });
+  // Keyed so a redraw keeps the reader's place on this page.
+  const view = h('div', { class: 'view', 'data-scroll-key': `view:${route.projectId ?? 'all'}:${route.tab}` });
   const project = route.projectId ? ctx.project(route.projectId) : null;
 
   if (route.projectId && !project) {

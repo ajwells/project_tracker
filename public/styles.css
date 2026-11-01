@@ -302,7 +302,14 @@ dialog.wide { width: min(1000px, calc(100vw - 24px)); }
   h1 { font-size: 18px; }
   .tabs { padding: 4px 8px 0; }
   .view { padding: 12px 12px 24px; }
-  .view.fill { padding-bottom: 10px; }
+  /* The page scrolls here, because the task cards below are not a scrolling frame. */
+  .view.fill { padding-bottom: 10px; overflow: hidden auto; }
+  .view.fill > .table-wrap.cards { flex: none; }
+  /* The add box docks to the bottom edge while the task cards scroll behind it. */
+  .view.fill:has(> .table-wrap.cards) { padding-bottom: 0; }
+  .view.fill > .table-wrap.cards ~ .add-row { position: sticky; bottom: 0; z-index: 2; margin: 0 -12px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 0; }
+  /* Charts keep a usable height when the phone is on its side. Vertical swipes pass to the page at the chart's edge. */
+  .chart-scroll { flex: 1 0 280px; overscroll-behavior-y: auto; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tiles .tile:first-child { grid-column: 1 / -1; }
   .drawer { width: 100vw; border-left: 0; }
