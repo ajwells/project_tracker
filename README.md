@@ -12,6 +12,8 @@ npm start
 
 Then open http://localhost:3000. The empty screen offers sample projects if you want something to explore.
 
+**By default, projects are stored in each person's browser, not on the server.** See [Where data is stored](#where-data-is-stored).
+
 In WebStorm, open `package.json` and click the run arrow next to `start`. If `node` isn't on your PATH, WebStorm's copy is at `%APPDATA%\JetBrains\WebStorm2026.2\node\versions\26.13.0`. Add that folder to PATH to use it from any terminal.
 
 | Setting | What it does |
@@ -19,10 +21,32 @@ In WebStorm, open `package.json` and click the run arrow next to `start`. If `no
 | `PORT=8080` | Uses a different port (default 3000) |
 | `APP_PASSWORD=...` | Requires a password |
 | `DATA_FILE=path` | Stores data somewhere else (default `data/store.json`) |
+| `SAVE_DATA=true` | Stores projects on the server and shares them (default `false`, which stores them in each browser) |
+
+### Where data is stored
+
+| | `SAVE_DATA=false` (default) | `SAVE_DATA=true` |
+| --- | --- | --- |
+| **Where projects are kept** | In each browser's site storage | In `data/store.json` on the server |
+| **Shared between people and devices** | No, each browser has its own copy | Yes, with live updates |
+| **Survives a server restart** | Yes | Yes |
+| **Lost if** | Browser data is cleared | The server's data file is deleted |
+| **Backup before an import** | No | Yes, in `data/backups/` |
+
+With saving off:
+
+- The server refuses changes, so project data never reaches it. Every page shows a warning banner.
+- Open tabs in the same browser stay in sync.
+- Browsers treat each address as a separate site. `http://localhost:3000`, your network address and any other port each have their own copy, so use one address consistently, or move projects with export and import.
+- Browsers limit site storage, usually to about 5 MB. If a change doesn't fit, it's refused with a message and nothing is lost.
+- Safari can delete site storage after seven days without a visit, and private windows discard it on close. Export regularly if you rely on either.
+- If the server already has a data file, a browser copies it on its first visit, and works on its own copy after that. The file isn't changed.
+
+Switching `SAVE_DATA` doesn't move any data. Use export and import to take projects from one mode to the other.
 
 ### Opening it on your phone
 
-The server listens on all network interfaces, so open the "Your network" address it prints at startup. Anyone on that network can also open and edit your projects, so set `APP_PASSWORD` first on any network you don't fully trust. The password is sent without encryption over plain HTTP, so it won't protect you on a public network or the open internet. Use an HTTPS proxy for those.
+The server listens on all network interfaces, so open the "Your network" address it prints at startup. With `SAVE_DATA` on, anyone on that network can also open and edit your projects. With it off, they get their own separate copy, but can still read any data file already on the server. Set `APP_PASSWORD` first on any network you don't fully trust. The password is sent without encryption over plain HTTP, so it won't protect you on a public network or the open internet. Use an HTTPS proxy for those.
 
 Browsers only allow copying images from HTTPS or localhost pages. Over a plain network address, use the PNG or PowerPoint download instead.
 
@@ -39,7 +63,7 @@ Browsers only allow copying images from HTTPS or localhost pages. Over a plain n
 - **Task history**: every field change is recorded with who, when, from and to. You can also post written updates, and dates moved by another task's change are logged with the cause
 - **Current POC** on every task, with contact details, filtering, and a record of past POCs in the history
 - **Import and export** of all projects as one JSON file
-- **Live updates** between open tabs and devices
+- **Live updates** between open tabs, and between devices when the server is saving data
 
 ### Getting charts into PowerPoint
 
@@ -68,7 +92,7 @@ Exports always use the light theme, whatever theme the app is in. A Gantt chart 
 - **Merge** adds new projects and updates those with a matching ID.
 - **Replace everything** swaps all data for the file.
 
-Files are fully checked first, so a bad file changes nothing. Every import saves a backup to `data/backups/` beforehand.
+Files are fully checked first, so a bad file changes nothing. When `SAVE_DATA` is on, every import saves a backup to `data/backups/` beforehand.
 
 ## Development
 
@@ -79,11 +103,12 @@ npm run dev     # restart the server on file changes
 
 | Path | Purpose |
 | --- | --- |
-| `src/scheduler.js` | Scheduling engine with no side effects |
-| `src/store.js` | Validation, history, import, and saving to disk |
+| `public/shared/` | Code used by both the server and the browser: scheduling, validation, history, import, and the API's change requests |
+| `public/js/local-store.js` | Keeps projects in the browser when `SAVE_DATA` is off |
+| `src/store.js` | Saves projects to disk when `SAVE_DATA` is on |
 | `src/server.js` | HTTP API, live updates, static files |
 | `public/js/chart/` | Chart layout, plus SVG and PowerPoint renderers |
 | `public/js/views/` | Screens |
 | `public/vendor/` | [PptxGenJS](https://github.com/gitbrent/PptxGenJS) 4.0.1 (MIT), included so there is nothing to install |
 
-Your data lives in `data/`, which git ignores.
+With `SAVE_DATA` on, your data lives in `data/`, which git ignores.

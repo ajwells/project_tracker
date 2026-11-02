@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeSchedule, makeCalendar, toDayNumber, toIso } from '../src/scheduler.js';
+import { computeSchedule, makeCalendar, toDayNumber, toIso } from '../public/shared/scheduler.js';
 
 const TODAY = '2026-01-05'; // a Monday
 

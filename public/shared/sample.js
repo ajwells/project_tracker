@@ -2,7 +2,7 @@
 // before entering real data. Dates are relative to today.
 
 import { makeCalendar, toDayNumber, toIso } from './scheduler.js';
-import { EXPORT_FORMAT, SCHEMA_VERSION } from './store.js';
+import { EXPORT_FORMAT, SCHEMA_VERSION } from './store-core.js';
 
 export function buildSample(todayIso) {
   const cal = makeCalendar();

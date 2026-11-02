@@ -39,6 +39,7 @@ const ICONS = {
   down: 'M12 5v14M6 13l6 6 6-6',
   left: 'M19 12H5M11 6l-6 6 6 6',
   right: 'M5 12h14M13 6l6 6-6 6',
+  alert: 'M12 4L2.5 20h19zM12 10v5M12 18v.01',
   download: 'M12 4v11M7 11l5 5 5-5M5 20h14',
   upload: 'M12 16V5M7 9l5-5 5 5M5 20h14',
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4',

@@ -135,7 +135,12 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .seg button[aria-pressed=true] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 12%); }
 
 /* ---- App shell ---- */
-.shell { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); height: 100dvh; }
+#app { display: flex; flex-direction: column; height: 100dvh; }
+.save-banner { display: flex; align-items: flex-start; gap: 8px; flex: none; padding: 8px 16px; background: var(--warn-soft); border-bottom: 1px solid var(--warn); font-size: 13px; }
+.save-banner[hidden] { display: none; }
+.save-banner svg { color: var(--warn); margin-top: 1px; }
+.save-banner a { color: inherit; font-weight: 600; }
+.shell { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; }
 .sidebar { display: flex; flex-direction: column; gap: 2px; padding: 14px 10px; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 14px; font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
 .brand img { width: 24px; height: 24px; }
@@ -286,8 +291,8 @@ dialog.wide { width: min(1000px, calc(100vw - 24px)); }
 .empty { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 440px; margin: 9vh auto; text-align: center; }
 .empty h2 { font-size: 18px; }
 .empty p { color: var(--ink-2); }
-#toasts { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(520px, calc(100vw - 24px)); pointer-events: none; }
-.toast { padding: 9px 14px; background: var(--ink); color: var(--bg); border-radius: 9px; font-size: 13.5px; box-shadow: var(--shadow); pointer-events: auto; }
+#toasts { position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(520px, calc(100vw - 24px)); pointer-events: none; }
+.toast { padding: 9px 14px; background: var(--ink); color: var(--bg); border-radius: 9px; font-size: 13.5px; box-shadow: var(--shadow); }
 .toast.error { background: var(--bad); color: #fff; }
 .boot-error { padding: 40px; text-align: center; }
 
@@ -307,7 +312,7 @@ dialog.wide { width: min(1000px, calc(100vw - 24px)); }
   .view.fill > .table-wrap.cards { flex: none; }
   /* The add box docks to the bottom edge while the task cards scroll behind it. */
   .view.fill:has(> .table-wrap.cards) { padding-bottom: 0; }
-  .view.fill > .table-wrap.cards ~ .add-row { position: sticky; bottom: 0; z-index: 2; margin: 0 -12px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 0; }
+  .view.fill > .table-wrap.cards ~ .add-row { position: sticky; bottom: 0; z-index: 2; margin: auto -12px 0; padding-bottom: calc(8px + env(safe-area-inset-bottom)); border-width: 1px 0 0; border-radius: 0; }
   /* Charts keep a usable height when the phone is on its side. Vertical swipes pass to the page at the chart's edge. */
   .chart-scroll { flex: 1 0 280px; overscroll-behavior-y: auto; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }

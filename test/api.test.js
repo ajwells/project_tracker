@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createApp } from '../src/server.js';
+import { createApp, parseSaveData } from '../src/server.js';
 
 let app;
 let base;
@@ -35,7 +35,7 @@ async function makeTask(projectId, name, fields = {}) {
 
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tracker-test-'));
-  app = createApp({ dataFile: join(dir, 'store.json'), password: '' });
+  app = createApp({ dataFile: join(dir, 'store.json'), password: '', saving: true });
   await new Promise((done) => app.server.listen(0, '127.0.0.1', done));
   base = `http://127.0.0.1:${app.server.address().port}`;
 });
@@ -292,13 +292,78 @@ test('bad import files are refused and leave data untouched', async () => {
   assert.deepEqual((await api('GET', '/api/export')).json.projects, before);
 });
 
+test('with saving off nothing is written, and changes end with the server', async () => {
+  const folder = join(dir, 'unsaved');
+  const file = join(folder, 'store.json');
+  const first = createApp({ dataFile: file, password: '', saving: false });
+  const id = first.store.createProject({ name: 'Temporary' });
+  first.store.createTask(id, { name: 'Gone soon' });
+  const exported = first.store.exportAll();
+  first.store.importAll(exported, 'replace');
+  assert.equal(first.store.snapshot().saving, false);
+  assert.equal(first.store.snapshot().projects[0].tasks[0].name, 'Gone soon');
+  assert.equal(existsSync(folder), false);
+  await first.close();
+  const second = createApp({ dataFile: file, password: '', saving: false });
+  assert.equal(second.store.snapshot().projects.length, 0);
+  await second.close();
+});
+
+test('with saving off existing data loads and its file is left alone', async () => {
+  const file = join(dir, 'kept.json');
+  const saved = createApp({ dataFile: file, password: '', saving: true });
+  assert.equal(saved.store.snapshot().saving, true);
+  saved.store.createProject({ name: 'Kept' });
+  await saved.close();
+  const before = readFileSync(file, 'utf8');
+  const unsaved = createApp({ dataFile: file, password: '', saving: false });
+  assert.equal(unsaved.store.snapshot().projects[0].name, 'Kept');
+  unsaved.store.createProject({ name: 'Not kept' });
+  assert.equal(unsaved.store.snapshot().projects.length, 2);
+  await unsaved.close();
+  assert.equal(readFileSync(file, 'utf8'), before);
+});
+
+test('with saving off the server refuses changes but still offers its file', async () => {
+  const file = join(dir, 'refusing.json');
+  const saved = createApp({ dataFile: file, password: '', saving: true });
+  saved.store.createProject({ name: 'On file' });
+  await saved.close();
+  const before = readFileSync(file, 'utf8');
+
+  const off = createApp({ dataFile: file, password: '', saving: false });
+  await new Promise((done) => off.server.listen(0, '127.0.0.1', done));
+  const url = `http://127.0.0.1:${off.server.address().port}`;
+  try {
+    const send = (method, path) => fetch(url + path, { method, headers, body: JSON.stringify({ name: 'Nope', mode: 'merge' }) });
+    assert.equal((await send('POST', '/api/projects')).status, 409);
+    assert.equal((await send('POST', '/api/import')).status, 409);
+    assert.equal((await send('POST', '/api/sample')).status, 409);
+    const state = await (await fetch(`${url}/api/state`)).json();
+    assert.equal(state.saving, false);
+    assert.equal(state.projects[0].name, 'On file');
+    assert.equal((await (await fetch(`${url}/api/export`)).json()).projects[0].name, 'On file');
+    assert.equal(off.store.snapshot().projects.length, 1);
+    assert.equal(readFileSync(file, 'utf8'), before);
+    assert.equal((await fetch(`${url}/shared/store-core.js`)).status, 200);
+  } finally {
+    await off.close();
+  }
+});
+
+test('SAVE_DATA accepts on and off words and refuses anything else', () => {
+  for (const value of ['true', 'TRUE', 'on', 'yes', '1', ' true ']) assert.equal(parseSaveData(value), true, value);
+  for (const value of [undefined, '', 'false', 'False', 'off', 'no', '0']) assert.equal(parseSaveData(value), false, value);
+  for (const value of ['flase', 'disabled', '2']) assert.throws(() => parseSaveData(value), /SAVE_DATA/);
+});
+
 test('data survives a restart', async () => {
   const file = join(dir, 'restart.json');
-  const first = createApp({ dataFile: file, password: '' });
+  const first = createApp({ dataFile: file, password: '', saving: true });
   const id = first.store.createProject({ name: 'Durable' });
   first.store.createTask(id, { name: 'Still here', pocName: 'Ana' });
   await first.close();
-  const second = createApp({ dataFile: file, password: '' });
+  const second = createApp({ dataFile: file, password: '', saving: true });
   const project = second.store.snapshot().projects[0];
   assert.equal(project.name, 'Durable');
   assert.equal(project.tasks[0].pocName, 'Ana');

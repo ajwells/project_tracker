@@ -8,7 +8,7 @@ import { dirname, extname, join, resolve, sep } from 'node:path';
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { HttpError, Store } from './store.js';
-import { buildSample } from './sample.js';
+import { applyChange } from '../public/shared/routes.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = join(ROOT, 'public');
@@ -93,8 +93,16 @@ function isAuthorized(req, password) {
   return timingSafeEqual(sha(supplied), sha(password));
 }
 
-export function createApp({ dataFile, password = process.env.APP_PASSWORD } = {}) {
-  const store = new Store(dataFile ?? process.env.DATA_FILE ?? join(ROOT, 'data', 'store.json'));
+// A typo must not silently pick a mode: it could lose data, or write data that was meant to stay off disk.
+export function parseSaveData(value) {
+  const text = (value ?? '').trim().toLowerCase();
+  if (['true', 'on', 'yes', '1'].includes(text)) return true;
+  if (['', 'false', 'off', 'no', '0'].includes(text)) return false;
+  throw new Error(`SAVE_DATA must be true or false, not "${value}".`);
+}
+
+export function createApp({ dataFile, password = process.env.APP_PASSWORD, saving = parseSaveData(process.env.SAVE_DATA) } = {}) {
+  const store = new Store(dataFile ?? process.env.DATA_FILE ?? join(ROOT, 'data', 'store.json'), { saving });
   const sseClients = new Set();
 
   store.subscribe((revision) => {
@@ -104,10 +112,8 @@ export function createApp({ dataFile, password = process.env.APP_PASSWORD } = {}
   const route = async (req, res, url) => {
     const { pathname } = url;
     const method = req.method;
-    const parts = pathname.split('/').filter(Boolean).slice(1); // drop "api"
-    const ok = () => sendJson(res, 200, store.snapshot());
 
-    if (method === 'GET' && pathname === '/api/state') return ok();
+    if (method === 'GET' && pathname === '/api/state') return sendJson(res, 200, store.snapshot());
     if (method === 'GET' && pathname === '/api/events') {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -132,62 +138,10 @@ export function createApp({ dataFile, password = process.env.APP_PASSWORD } = {}
     }
 
     if (method === 'GET') throw new HttpError(404, 'Not found.');
+    if (!store.saving) throw new HttpError(409, 'Saving on the server is off, so this server does not accept changes. Reload the page.');
     const body = method === 'DELETE' ? await readJsonOptional(req) : await readJson(req);
-    const actor = body.actor;
-
-    if (method === 'POST' && pathname === '/api/projects') {
-      const id = store.createProject(body);
-      return sendJson(res, 201, { ...store.snapshot(), createdId: id });
-    }
-    if (method === 'POST' && pathname === '/api/import') {
-      const result = store.importAll(body.data, body.mode);
-      return sendJson(res, 200, { ...store.snapshot(), importResult: result });
-    }
-    if (method === 'POST' && pathname === '/api/sample') {
-      const result = store.importAll(buildSample(store.snapshot().today), 'merge');
-      return sendJson(res, 200, { ...store.snapshot(), importResult: result });
-    }
-    if (parts[0] === 'projects' && parts[1]) {
-      const id = parts[1];
-      if (parts.length === 2 && method === 'PATCH') {
-        store.updateProject(id, body);
-        return ok();
-      }
-      if (parts.length === 2 && method === 'DELETE') {
-        store.deleteProject(id, actor);
-        return ok();
-      }
-      if (parts[2] === 'tasks' && parts.length === 3 && method === 'POST') {
-        const taskId = store.createTask(id, body);
-        return sendJson(res, 201, { ...store.snapshot(), createdId: taskId });
-      }
-      if (parts[2] === 'baseline' && parts.length === 3) {
-        if (method === 'POST') store.setBaseline(id, true);
-        else if (method === 'DELETE') store.setBaseline(id, false);
-        else throw new HttpError(405, 'Method not allowed.');
-        return ok();
-      }
-    }
-    if (parts[0] === 'tasks' && parts[1]) {
-      const id = parts[1];
-      if (parts.length === 2 && method === 'PATCH') {
-        store.updateTask(id, body);
-        return ok();
-      }
-      if (parts.length === 2 && method === 'DELETE') {
-        store.deleteTask(id, actor);
-        return ok();
-      }
-      if (parts[2] === 'updates' && parts.length === 3 && method === 'POST') {
-        store.addUpdate(id, body);
-        return ok();
-      }
-      if (parts[2] === 'move' && parts.length === 3 && method === 'POST') {
-        store.moveTask(id, body.direction, actor);
-        return ok();
-      }
-    }
-    throw new HttpError(404, 'Not found.');
+    const result = applyChange(store, method, pathname, body);
+    return sendJson(res, result.status, result.body);
   };
 
   const server = createServer(async (req, res) => {
@@ -240,7 +194,14 @@ async function readJsonOptional(req) {
 }
 
 export function startServer({ port = Number(process.env.PORT) || 3000 } = {}) {
-  const { server } = createApp();
+  let saving;
+  try {
+    saving = parseSaveData(process.env.SAVE_DATA);
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+  const { server, store } = createApp({ saving });
   server.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
       console.error(`Port ${port} is already in use. Set the PORT environment variable to use another one.`);
@@ -255,9 +216,16 @@ export function startServer({ port = Number(process.env.PORT) || 3000 } = {}) {
         if (net.family === 'IPv4' && !net.internal) console.log(`  Your network:   http://${net.address}:${port}`);
       }
     }
-    if (!process.env.APP_PASSWORD) {
-      console.log('\n  Warning: anyone on this network can open and edit your projects.');
+    if (!process.env.APP_PASSWORD && (saving || store.state.projects.length)) {
+      console.log(saving
+        ? '\n  Warning: anyone on this network can open and edit your projects.'
+        : '\n  Warning: anyone on this network can read the projects in the server\'s data file.');
       console.log('  Set the APP_PASSWORD environment variable to require a password.');
+    }
+    if (!saving) {
+      console.log('\n  Warning: saving on the server is off. Each browser keeps its own projects,');
+      console.log('  so they are not shared between people or devices.');
+      console.log('  Set the SAVE_DATA environment variable to true to save them here instead.');
     }
     console.log('');
   });

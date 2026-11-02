@@ -1,4 +1,4 @@
-import { api, ctx, listenForChanges, refresh } from './ctx.js';
+import { api, ctx, exportFromBrowser, listenForChanges, refresh } from './ctx.js';
 import { attachTips, fmtRange, h, hideTip, icon, plural, toast } from './util.js';
 import { currentMode, projectColor } from './chart/core.js';
 import { renderTasks } from './views/tasks.js';
@@ -17,7 +17,12 @@ const main = h('main', { class: 'main' });
 const drawerHost = h('div');
 const scrim = h('div', { class: 'scrim', onclick: () => shell.classList.remove('nav-open') });
 const shell = h('div', { class: 'shell' }, sidebar, scrim, main);
-app.append(shell, drawerHost);
+const saveBanner = h('div', { class: 'save-banner', role: 'alert' },
+  icon('alert'),
+  h('span', {}, h('strong', {}, 'Not saved on the server.'), ' Your projects are only in this browser, and clearing its data deletes them. ',
+    h('a', { href: '/api/export', download: true, onclick: exportFromBrowser }, 'Export all projects'), ' as a backup.'));
+saveBanner.hidden = true;
+app.append(saveBanner, shell, drawerHost);
 attachTips(document.body);
 
 // ---- theme ------------------------------------------------------------------
@@ -73,7 +78,7 @@ function renderSidebar(route) {
     p.summary.lateCount ? h('span', { class: 'count', title: `${plural(p.summary.lateCount, 'late task')}` }, p.summary.lateCount) : null)),
     h('div', { class: 'side-foot' },
       h('button', { class: 'nav-item', onclick: openImportDialog }, icon('upload'), 'Import projects'),
-      h('a', { class: 'nav-item', href: '/api/export', download: true }, icon('download'), 'Export all projects'),
+      h('a', { class: 'nav-item', href: '/api/export', download: true, onclick: exportFromBrowser }, icon('download'), 'Export all projects'),
       h('button', { class: 'nav-item', onclick: openNameDialog }, icon('user'), h('span', { class: 'truncate' }, ctx.actor || 'Set your name')),
       h('button', { class: 'nav-item', onclick: cycleTheme }, icon('sun'), mode === 'dark' ? 'Light mode' : 'Dark mode')),
   );
@@ -174,6 +179,7 @@ ctx.render = () => {
   const route = parseRoute();
   ctx.route = route;
   hideTip();
+  saveBanner.hidden = ctx.data.saving !== false;
   const active = document.activeElement;
   const typing = active?.id && main.contains(active) && active.matches('input')
     ? { id: active.id, value: active.value, from: active.selectionStart, to: active.selectionEnd }

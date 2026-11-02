@@ -223,7 +223,7 @@ export function openImportDialog() {
     if (mode === 'replace' && ctx.data.projects.length) {
       const ok = await confirmDialog({
         title: 'Replace all projects?',
-        message: `Your ${plural(ctx.data.projects.length, 'current project')} will be replaced by this file. A backup copy is saved on the server first, in data/backups.`,
+        message: `Your ${plural(ctx.data.projects.length, 'current project')} will be replaced by this file. ${ctx.data.saving ? 'A backup copy is saved on the server first, in data/backups.' : 'No backup copy is made, so export your projects first if you want to keep them.'}`,
         confirmLabel: 'Replace everything',
         danger: true,
       });

@@ -1,6 +1,9 @@
 // Shared app state and server access, used by every view.
 
-import { toast } from './util.js';
+import { downloadBlob, toast } from './util.js';
+import { LocalStore, STORAGE_KEY } from './local-store.js';
+import { applyChange } from '../shared/routes.js';
+import { HttpError } from '../shared/store-core.js';
 
 const storage = {
   get(key, fallback = null) {
@@ -71,21 +74,78 @@ export const ctx = {
   },
 };
 
+// Set when the server isn't saving data, so projects are kept in this browser.
+let local = null;
+
 function applySnapshot(snapshot) {
-  if (ctx.data && snapshot.revision < ctx.data.revision) return;
+  // A server restarted with another data file can have a lower revision.
+  if (ctx.data && snapshot.serverId === ctx.data.serverId && snapshot.revision < ctx.data.revision) return;
   ctx.data = snapshot;
+}
+
+async function openLocalStore(serverState) {
+  const store = new LocalStore();
+  if (store.damaged) toast('The projects stored in this browser could not be read, so they were set aside.', 'error');
+  // A browser's first visit starts from whatever the server already has on file.
+  if (!store.hasSavedCopy() && !store.damaged && serverState.projects.length) {
+    try {
+      const res = await fetch('/api/export');
+      if (res.ok) store.importAll(await res.json(), 'replace');
+    } catch {
+      toast('Could not copy the server\'s projects into this browser.', 'error');
+    }
+  }
+  return store;
 }
 
 export async function refresh() {
   const res = await fetch('/api/state');
   if (!res.ok) throw new Error('Could not load your projects.');
-  applySnapshot(await res.json());
+  const snapshot = await res.json();
+  const useLocal = snapshot.saving === false;
+  // The server restarted with the other SAVE_DATA setting, so start over in that mode.
+  if (ctx.data && useLocal !== !!local) {
+    location.reload();
+    return;
+  }
+  if (useLocal) {
+    local ??= await openLocalStore(snapshot);
+    local.load();
+    ctx.data = local.snapshot();
+  } else {
+    applySnapshot(snapshot);
+  }
   ctx.render();
+}
+
+// Downloads the export from this browser's copy. The server has none to offer.
+export function exportFromBrowser(event) {
+  if (!local) return;
+  event.preventDefault();
+  local.load();
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadBlob(new Blob([JSON.stringify(local.exportAll(), null, 2)], { type: 'application/json' }), `project-tracker-export-${stamp}.json`);
+}
+
+function applyLocally(method, path, body) {
+  try {
+    local.load();
+    const result = applyChange(local, method, path, JSON.parse(JSON.stringify({ ...body, actor: ctx.actor || undefined })));
+    ctx.data = result.body;
+    ctx.render();
+    return result.body;
+  } catch (error) {
+    if (!(error instanceof HttpError)) console.error(error);
+    toast(error instanceof HttpError ? error.message : 'That change could not be saved.', 'error');
+    ctx.render();
+    return null;
+  }
 }
 
 // Sends a change. Failures show a toast and resolve to null, so callers can
 // just check the result; the view re-renders from server truth either way.
 export async function api(method, path, body = {}) {
+  if (local) return applyLocally(method, path, body);
   try {
     const res = await fetch(path, {
       method,
@@ -111,7 +171,20 @@ export async function api(method, path, body = {}) {
 // Picks up changes made in another tab or on another device.
 export function listenForChanges() {
   const events = new EventSource('/api/events');
-  events.onmessage = (event) => {
-    if (ctx.data && Number(event.data) > ctx.data.revision) refresh().catch(() => {});
+  let connected = false;
+  // Reconnecting means the server may have restarted, so reload what it holds now.
+  events.onopen = () => {
+    if (connected) refresh().catch(() => {});
+    connected = true;
   };
+  events.onmessage = (event) => {
+    if (!local && ctx.data && Number(event.data) > ctx.data.revision) refresh().catch(() => {});
+  };
+  // Another tab changed this browser's copy. A null key means storage was cleared.
+  addEventListener('storage', (event) => {
+    if (!local || (event.key !== STORAGE_KEY && event.key !== null)) return;
+    local.load();
+    ctx.data = local.snapshot();
+    ctx.render();
+  });
 }
