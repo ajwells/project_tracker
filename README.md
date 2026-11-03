@@ -57,7 +57,7 @@ Browsers only allow copying images from HTTPS or localhost pages. Over a plain n
 - **Dependencies**: finish-to-start, start-to-start, finish-to-finish and start-to-finish, with lag or lead in working or calendar days, each described in plain English
 - **Automatic scheduling** that follows dependencies and each project's working calendar (weekends and holidays), and refuses dependency loops
 - **Track each task by duration or by dates**: enter one, and the other fills in
-- **Working or calendar days**: choose for each task's duration and each link's lag
+- **Working or calendar days**: set a default for each project, and change any task's duration or link's lag on its own
 - **Critical path and float**, calculated across projects
 - **Summary tasks, milestones and baselines**
 - **Selected task highlighted** on the Gantt chart and timeline while its panel is open. The highlight never appears in exports
@@ -103,6 +103,7 @@ Tasks saved before this setting existed count as having a start date set, so upg
 Also:
 
 - **Durations and lags count working days by default**, using that project's calendar. Each task's duration and each link's lag can count calendar days instead, as for concrete curing or a 30-day notice period. Plans saved before this option count working days, so nothing moves.
+- **Each project has a default** for what new tasks and links count, in its settings. Changing it leaves existing tasks and links as they are, so nothing moves. A cross-project link takes the default of the project whose task is waiting.
 - **A calendar duration runs through weekends and holidays**, and the task can start or finish on one. Changing the unit keeps the number and moves the dates, unless the task is tracked by dates, where the dates hold and the number changes.
 - **A calendar lag can land on a day off.** A task with a working duration then moves to the next working day, or the working day before for a firm link, so the task stays ahead of its rule. A task with a calendar duration stays where the lag lands. Its link needs a calendar lag for that: a working lag still lands on a working day.
 - **Float and buffers use the same days as the task.** Float is in calendar days for a task with a calendar duration. A link's buffer is in calendar days if its lag or its task's duration is.

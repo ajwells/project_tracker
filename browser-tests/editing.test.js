@@ -71,6 +71,69 @@ for (const [mode, saving] of [['browser storage', undefined], ['server storage',
       });
     });
 
+    // Each save holds back for a moment, as it would on a slow connection.
+    const slowSaves = async (page) => {
+      await page.setRequestInterception(true);
+      page.on('request', async (request) => {
+        if (request.method() === 'PATCH') await pause(400);
+        await request.continue();
+      });
+    };
+
+    scenario('link changes made faster than they save all stick', async ({ page, saved }) => {
+      await slowSaves(page);
+      await page.select('.dep-row select[aria-label="Dependency type"]', 'SS');
+      await page.select('.dep-row select[aria-label="Lag counted in"]', 'calendar');
+      await click(page, '.dep-row input[type=number]');
+      await type(page, '-2');
+      await page.keyboard.press('Tab');
+      await soon(async () => {
+        const [link] = (await saved()).deps;
+        assert.deepEqual([link.type, link.lagUnit, link.lag], ['SS', 'calendar', -2]);
+        assert.equal(await value(page, '.dep-row input[type=number]'), '-2');
+        assert.equal(await value(page, '.dep-row select[aria-label="Dependency type"]'), 'SS');
+        assert.equal(await value(page, '.dep-row select[aria-label="Lag counted in"]'), 'calendar');
+      });
+    });
+
+    scenario('adding links faster than they save keeps every one', async ({ page, saved }) => {
+      await slowSaves(page);
+      const [, taskPicker] = await page.$$('.dep-add select');
+      await taskPicker.select('other');
+      await pressText(page, '.dep-add button', 'Add');
+      await page.select('.dep-row select[aria-label="Dependency type"]', 'FF');
+      await soon(async () => {
+        const links = (await saved()).deps;
+        assert.deepEqual(links.map((l) => [l.taskId, l.type]), [['pred', 'FF'], ['other', 'FS']]);
+      });
+    });
+
+    scenario('a refused link change goes back to what was saved, and later changes still save', async ({ page, saved }) => {
+      await page.select('.dep-row select[aria-label="Dependency type"]', 'SS');
+      await soon(async () => assert.equal((await saved()).deps[0].type, 'SS'));
+      // A lag past the limit is refused, whichever store answers.
+      await click(page, '.dep-row input[type=number]');
+      await type(page, '99999');
+      await page.keyboard.press('Tab');
+      await soon(async () => assert.match(await toastText(page), /Lag/));
+      await soon(async () => assert.equal(await value(page, '.dep-row input[type=number]'), '0'));
+      assert.equal((await saved()).deps[0].lag, 0);
+      await page.select('.dep-row select[aria-label="Dependency type"]', 'FF');
+      await soon(async () => assert.deepEqual([(await saved()).deps[0].type, (await saved()).deps[0].lag], ['FF', 0]));
+    });
+
+    scenario('removing a link while another change saves removes only that link', async ({ page, saved }) => {
+      const [, taskPicker] = await page.$$('.dep-add select');
+      await taskPicker.select('other');
+      await pressText(page, '.dep-add button', 'Add');
+      await soon(async () => assert.equal((await saved()).deps.length, 2));
+      await slowSaves(page);
+      await (await page.$$('.dep-row select[aria-label="Dependency type"]'))[1].select('SF');
+      await page.$eval('.dep-row .btn.ghost.icon', (b) => b.click());
+      await soon(async () => assert.deepEqual((await saved()).deps.map((l) => [l.taskId, l.type]), [['other', 'SF']]));
+      await soon(async () => assert.equal((await page.$$('.dep-row')).length, 1));
+    });
+
     scenario('pressing Enter updates the fields that depend on it', async ({ page, saved }) => {
       await click(page, '.drawer [name=duration]');
       await selectAll(page);

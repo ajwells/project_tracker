@@ -15,6 +15,9 @@ export function openProjectDialog(project = null) {
   const description = h('textarea', { rows: 2, maxlength: 2000 }, project?.description ?? '');
   const weekends = h('input', { type: 'checkbox', checked: !!project?.calendar?.workWeekends });
   const holidays = h('textarea', { rows: 2, placeholder: '2026-12-25, 2027-01-01' }, (project?.calendar?.holidays ?? []).join(', '));
+  const dayUnit = h('select', { name: 'defaultDayUnit' },
+    h('option', { value: 'working', selected: project?.defaultDayUnit !== 'calendar' }, 'Working days'),
+    h('option', { value: 'calendar', selected: project?.defaultDayUnit === 'calendar' }, 'Calendar days'));
 
   const swatches = h('div', { class: 'color-swatches', role: 'group', 'aria-label': 'Project color' });
   const drawSwatches = () => swatches.replaceChildren(...Object.entries(PROJECT_COLORS).map(([key, value]) => h('button', {
@@ -41,6 +44,7 @@ export function openProjectDialog(project = null) {
       owner: owner.value,
       description: description.value,
       calendar: { workWeekends: weekends.checked, holidays: dates },
+      defaultDayUnit: dayUnit.value,
       ...(color ? { color } : {}),
     };
     if (project) {
@@ -80,6 +84,8 @@ export function openProjectDialog(project = null) {
       h('h3', {}, 'Working calendar'),
       h('label', { class: 'check' }, weekends, h('span', {}, 'Work on weekends')),
       field('Holidays (YYYY-MM-DD, separated by commas)', holidays),
+      field('New tasks and links count', dayUnit),
+      h('p', { class: 'small muted' }, 'Existing tasks and links keep what they count. You can still change any task or link on its own.'),
       project?.baseline ? h('div', { class: 'row', style: { justifyContent: 'space-between' } },
         h('span', { class: 'small muted' }, `Baseline saved ${fmtDate(project.baseline.at.slice(0, 10), true)}`),
         h('button', {
@@ -152,6 +158,8 @@ export function openLinkDialog(project) {
   }
   function sync() {
     toTask.replaceChildren(...taskOptions(ctx.project(toProject.value)));
+    // The link belongs to the task that waits, so its project's default applies.
+    lagUnit.value = ctx.project(toProject.value)?.defaultDayUnit ?? 'working';
     const previous = fromProject.value;
     fromProject.replaceChildren(...others(toProject.value).map((p) => h('option', { value: p.id, selected: p.id === previous }, p.name)));
     syncFrom();

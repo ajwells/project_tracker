@@ -191,7 +191,7 @@ function buildDrawer({ project, task }) {
       scheduleLine,
       notices.length ? h('div', { class: 'stack', style: { gap: '6px' } }, notices) : null,
       h('section', { class: 'drawer-section' }, h('h3', {}, 'Details'), details, notes, options, outline),
-      dependenciesSection(project, task, patch),
+      dependenciesSection(project, task),
       historySection(task),
       h('div', {}, h('button', {
         class: 'btn danger', type: 'button',
@@ -210,13 +210,32 @@ function buildDrawer({ project, task }) {
       }, icon('trash'), 'Delete task'))));
 }
 
-function dependenciesSection(project, task, patch) {
-  const setDeps = (deps) => patch({ deps });
-  const rows = task.deps.map((dep, index) => {
+// A save sends a task's whole list of links, so one built before the last save finished
+// would undo it. Edits wait their turn and apply to the list as saved. Until then, the
+// panel shows them on top of it. An edit may be applied more than once, so must allow that.
+const linkEdits = [];
+let linkSaves = Promise.resolve();
+const withLinkEdits = (task) => linkEdits.filter((e) => e.taskId === task.id).reduce((deps, e) => e.apply(deps), task.deps);
+
+function editLinks(taskId, apply) {
+  const entry = { taskId, apply };
+  linkEdits.push(entry);
+  linkSaves = linkSaves.then(async () => {
+    const found = ctx.findTask(taskId);
+    const saved = found ? await api('PATCH', `/api/tasks/${taskId}`, { deps: apply(found.task.deps) }) : null;
+    linkEdits.splice(linkEdits.indexOf(entry), 1);
+    // A refused edit was still showing when the refusal redrew the panel.
+    if (!saved) ctx.render();
+  });
+}
+
+function dependenciesSection(project, task) {
+  const links = withLinkEdits(task);
+  const rows = links.map((dep) => {
     const found = ctx.findTask(dep.taskId);
     if (!found) return null;
     const cross = found.project.id !== project.id;
-    const change = (fields) => setDeps(task.deps.map((d, i) => (i === index ? { ...d, ...fields } : d)));
+    const change = (fields) => editLinks(task.id, (deps) => deps.map((d) => (d.taskId === dep.taskId ? { ...d, ...fields } : d)));
     const link = task.computed.links.find((l) => l.taskId === dep.taskId);
     const buffer = link?.buffer ?? 0;
     const firm = ctx.isFirm(dep);
@@ -246,7 +265,7 @@ function dependenciesSection(project, task, patch) {
       h('select', { 'aria-label': 'Lag counted in', title: 'Lag counts working days or calendar days', onchange: (e) => change({ lagUnit: e.target.value }) },
         h('option', { value: 'working', selected: dep.lagUnit !== 'calendar' }, 'Working'),
         h('option', { value: 'calendar', selected: dep.lagUnit === 'calendar' }, 'Calendar')),
-      h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': `Remove ${found.task.name}`, onclick: () => setDeps(task.deps.filter((_, i) => i !== index)) }, icon('x')),
+      h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': `Remove ${found.task.name}`, onclick: () => editLinks(task.id, (deps) => deps.filter((d) => d.taskId !== dep.taskId)) }, icon('x')),
       h('p', { class: 'dep-plain' }, describeDep(dep, task, found.task, firm)),
       standing ? h('p', { class: `dep-standing ${buffer < 0 || firm ? 'bad' : ''}` }, standing) : null,
       firm ? h('p', { class: 'dep-standing' }, FIRM_NOTE) : null);
@@ -254,7 +273,7 @@ function dependenciesSection(project, task, patch) {
 
   // Add a predecessor from this project or any other.
   const source = ctx.project(adding.projectId) ?? project;
-  const taken = new Set(task.deps.map((d) => d.taskId));
+  const taken = new Set(links.map((d) => d.taskId));
   const options = orderedTasks(source).filter((t) => t.id !== task.id && !taken.has(t.id));
   const chosen = options.some((t) => t.id === adding.taskId) ? adding.taskId : '';
   const projectSelect = h('select', {
@@ -289,7 +308,8 @@ function dependenciesSection(project, task, patch) {
           const taskId = adding.taskId;
           if (!taskId) return;
           adding.taskId = '';
-          setDeps([...task.deps, { taskId, type: 'FS', lag: 0 }]);
+          editLinks(task.id, (deps) => (deps.some((d) => d.taskId === taskId) ? deps : [...deps, { taskId, type: 'FS', lag: 0 }]));
+          redraw();
         },
       }, 'Add')),
     h('h3', { style: { marginTop: '6px' } }, 'Waiting on this task'),

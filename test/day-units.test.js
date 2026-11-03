@@ -380,3 +380,122 @@ test('cross-project links report their lag unit and a buffer in calendar days', 
     ['calendar', 'calendar', 11, 'buffer'],
   );
 });
+
+// ---- the project's default ------------------------------------------------------------
+
+function calendarProject() {
+  const s = store();
+  const id = s.createProject({ name: 'P', defaultDayUnit: 'calendar' });
+  s.createTask(id, { name: 'A', start: '2026-11-02', duration: 7 });
+  return { s, id, a: tasksOf(s)[0] };
+}
+
+test('a project counts working days unless it says otherwise', () => {
+  const s = store();
+  s.createProject({ name: 'P' });
+  assert.equal(s.snapshot().projects[0].defaultDayUnit, 'working');
+});
+
+test('new tasks take the default, and can say otherwise', () => {
+  const { s, id, a } = calendarProject();
+  assert.deepEqual([a.durationUnit, a.computed.end], ['calendar', '2026-11-08']);
+  s.createTask(id, { name: 'B', durationUnit: 'working' });
+  assert.equal(tasksOf(s)[1].durationUnit, 'working');
+  s.createTask(id, { name: 'Child', parentId: a.id });
+  assert.equal(tasksOf(s)[2].durationUnit, 'calendar');
+});
+
+test('a new task tracked by dates fills in its finish on the default', () => {
+  const { s, id } = calendarProject();
+  s.createTask(id, { name: 'B', start: '2026-11-02', duration: 7, trackBy: 'dates' });
+  assert.equal(tasksOf(s)[1].finish, '2026-11-08');
+});
+
+test('new links take the default, and can say otherwise', () => {
+  const { s, id, a } = calendarProject();
+  s.createTask(id, { name: 'B', deps: [{ taskId: a.id, type: 'FS', lag: 1 }] });
+  assert.equal(tasksOf(s)[1].deps[0].lagUnit, 'calendar');
+  s.createTask(id, { name: 'C', deps: [{ taskId: a.id, type: 'FS', lag: 1, lagUnit: 'working' }] });
+  assert.equal(tasksOf(s)[2].deps[0].lagUnit, undefined);
+  const d = tasksOf(s)[1];
+  s.createTask(id, { name: 'D' });
+  const made = tasksOf(s)[3];
+  s.updateTask(made.id, { deps: [{ taskId: a.id, type: 'SS', lag: 2 }] });
+  assert.equal(tasksOf(s)[3].deps[0].lagUnit, 'calendar');
+  s.updateTask(made.id, { deps: [{ taskId: a.id, type: 'SS', lag: 2 }, { taskId: d.id, type: 'FS', lag: 0 }] });
+  assert.deepEqual(tasksOf(s)[3].deps.map((l) => l.lagUnit), ['calendar', 'calendar']);
+});
+
+test('a calendar link sent back without its unit stays calendar, in any project', () => {
+  const { s, a, projectId } = plannedStore();
+  s.createTask(projectId, { name: 'B', deps: [{ taskId: a.id, type: 'FS', lag: 1, lagUnit: 'calendar' }] });
+  const b = tasksOf(s)[1];
+  s.updateTask(b.id, { deps: [{ taskId: a.id, type: 'FS', lag: 5 }] });
+  assert.deepEqual(tasksOf(s)[1].deps, [{ taskId: a.id, type: 'FS', lag: 5, lagUnit: 'calendar' }]);
+});
+
+test('a link changed to working days stays working when it is edited again', () => {
+  const { s, id, a } = calendarProject();
+  s.createTask(id, { name: 'B', deps: [{ taskId: a.id, type: 'FS', lag: 1 }] });
+  const b = tasksOf(s)[1];
+  s.updateTask(b.id, { deps: [{ ...b.deps[0], lagUnit: 'working' }] });
+  // The panel sends back what it has, which has no unit for a working link.
+  const [saved] = tasksOf(s)[1].deps;
+  assert.equal(saved.lagUnit, undefined);
+  s.updateTask(b.id, { deps: [{ ...saved, lag: 5 }] });
+  assert.deepEqual(tasksOf(s)[1].deps, [{ taskId: a.id, type: 'FS', lag: 5 }]);
+});
+
+test('changing the default moves nothing and records nothing, then applies to what comes next', () => {
+  const { s, a: before, id } = plannedStoreWithLink();
+  const snapshot = () => tasksOf(s).map((t) => [t.durationUnit, t.deps, t.computed.start, t.computed.end, t.history.length]);
+  const was = snapshot();
+  s.updateProject(id, { defaultDayUnit: 'calendar' });
+  assert.deepEqual(snapshot(), was);
+  s.createTask(id, { name: 'New', deps: [{ taskId: before.id, type: 'FS', lag: 1 }] });
+  const made = tasksOf(s).at(-1);
+  assert.deepEqual([made.durationUnit, made.deps[0].lagUnit], ['calendar', 'calendar']);
+  // Editing an older link still leaves it working.
+  const older = tasksOf(s)[1];
+  s.updateTask(older.id, { deps: older.deps.map((l) => ({ ...l, lag: 9 })) });
+  assert.equal(tasksOf(s)[1].deps[0].lagUnit, undefined);
+});
+
+function plannedStoreWithLink() {
+  const { s, a, projectId } = plannedStore();
+  s.createTask(projectId, { name: 'B', deps: [{ taskId: a.id, type: 'FS', lag: 1 }] });
+  return { s, a, id: projectId };
+}
+
+test('an unknown default is refused', () => {
+  const s = store();
+  assert.throws(() => s.createProject({ name: 'P', defaultDayUnit: 'weeks' }), /working days or calendar days/);
+  const id = s.createProject({ name: 'P' });
+  assert.throws(() => s.updateProject(id, { defaultDayUnit: 'weeks' }), /working days or calendar days/);
+  assert.equal(s.snapshot().projects[0].defaultDayUnit, 'working');
+});
+
+test('the default survives an export and import, and older files count working days', () => {
+  const { s } = calendarProject();
+  const exported = structuredClone(s.exportAll());
+  const again = store();
+  again.importAll(exported, 'replace');
+  assert.equal(again.snapshot().projects[0].defaultDayUnit, 'calendar');
+  delete exported.projects[0].defaultDayUnit;
+  const older = store();
+  older.importAll(exported, 'replace');
+  assert.equal(older.snapshot().projects[0].defaultDayUnit, 'working');
+});
+
+test('a cross-project link takes the default of the waiting task\'s project', () => {
+  const s = store();
+  const up = s.createProject({ name: 'Up', defaultDayUnit: 'calendar' });
+  const down = s.createProject({ name: 'Down' });
+  s.createTask(up, { name: 'U' });
+  s.createTask(down, { name: 'D' });
+  const [projectUp, projectDown] = s.snapshot().projects;
+  s.updateTask(projectDown.tasks[0].id, { deps: [{ taskId: projectUp.tasks[0].id, type: 'FS', lag: 2 }] });
+  assert.equal(s.snapshot().projects[1].tasks[0].deps[0].lagUnit, undefined);
+  s.createTask(up, { name: 'U2', deps: [{ taskId: projectDown.tasks[0].id, type: 'FS', lag: 2 }] });
+  assert.equal(s.snapshot().projects[0].tasks[1].deps[0].lagUnit, 'calendar');
+});

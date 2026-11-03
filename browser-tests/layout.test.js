@@ -345,6 +345,7 @@ describe('the task panel and the page', { concurrency: CONCURRENCY }, () => {
   });
 
   scenario('the task list explains a link when pointed at', WIDE, '#/p/proj/tasks', async (page) => {
+    await page.waitForSelector('.dep-chip');
     assert.equal(await page.$eval('.dep-chip', (c) => c.title), '"succ" finishes 30 working days before "pred" starts.');
   });
 
@@ -515,4 +516,68 @@ describe('the task panel and the page', { concurrency: CONCURRENCY }, () => {
       assert.ok(layout.minWidth >= 38, `smallest control is ${layout.minWidth}px`);
     });
   }
+
+  // ---- the project's default ----
+
+  const setDefault = async (page, unit) => {
+    await page.waitForSelector('[aria-label="Project settings"]');
+    await page.click('[aria-label="Project settings"]');
+    await page.waitForSelector('dialog [name=defaultDayUnit]');
+    await page.select('dialog [name=defaultDayUnit]', unit);
+    await page.click('dialog [data-action=save-project]');
+    await soon(async () => assert.equal(await page.$('dialog[open]'), null));
+  };
+  const addTask = async (page, name) => {
+    await click(page, 'input[placeholder="Add a task and press Enter"]');
+    await type(page, name);
+    await page.keyboard.press('Enter');
+    await soon(() => openTask(page, name));
+  };
+
+  scenario('with a calendar default, new tasks and links count calendar days, and either can be changed', WIDE, '#/p/proj/tasks', async (page) => {
+    await setDefault(page, 'calendar');
+    // What was already there hasn't changed.
+    assert.equal((await savedTask(page, 'pred')).durationUnit ?? 'working', 'working');
+    await addTask(page, 'added');
+    const unit = () => page.$eval('.drawer [name=durationUnit]', (el) => el.value);
+    await soon(async () => assert.equal(await unit(), 'calendar'));
+
+    // Add a predecessor the way the panel does.
+    const pickers = await page.$$('.dep-add select');
+    await pickers[1].select('pred');
+    await pressText(page, '.dep-add button', 'Add');
+    const lagUnit = () => page.$eval('.dep-row select[aria-label="Lag counted in"]', (el) => el.value);
+    await soon(async () => assert.equal(await lagUnit(), 'calendar'));
+
+    // The default is only a starting point.
+    await page.select('.dep-row select[aria-label="Lag counted in"]', 'working');
+    await soon(async () => assert.equal(await lagUnit(), 'working'));
+    await page.select('.dep-row select[aria-label="Dependency type"]', 'SS');
+    await soon(async () => {
+      assert.equal(await page.$eval('.dep-row select[aria-label="Dependency type"]', (el) => el.value), 'SS');
+      assert.equal(await lagUnit(), 'working');
+    });
+    await page.select('.drawer [name=durationUnit]', 'working');
+    await soon(async () => assert.equal(await unit(), 'working'));
+  });
+
+  scenario('the settings dialog shows the saved default, and says it leaves existing work alone', WIDE, '#/p/proj/tasks', async (page) => {
+    await setDefault(page, 'calendar');
+    await page.click('[aria-label="Project settings"]');
+    await page.waitForSelector('dialog [name=defaultDayUnit]');
+    assert.equal(await page.$eval('dialog [name=defaultDayUnit]', (el) => el.value), 'calendar');
+    assert.match(await page.$eval('dialog', (d) => d.textContent), /Existing tasks and links keep what they count/);
+  });
+
+  scenario('the cross-project dialog starts on the waiting project\'s default', WIDE, '#/p/proj/tasks', async (page) => {
+    await setDefault(page, 'calendar');
+    await page.evaluate(() => { location.hash = '#/p/proj/links'; });
+    await pressText(page, 'button', 'Add cross-project link');
+    await page.waitForSelector('dialog .dep-plain');
+    const selects = await page.$$('dialog select');
+    const lagUnit = () => selects.at(-1).evaluate((el) => el.value);
+    assert.equal(await lagUnit(), 'calendar');
+    await selects[0].select('other');
+    await soon(async () => assert.equal(await lagUnit(), 'working'));
+  });
 });

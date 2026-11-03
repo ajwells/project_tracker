@@ -186,6 +186,7 @@ export class StoreCore {
           ? input.color
           : COLORS.find((c) => !used.has(c)) ?? COLORS[draft.projects.length % COLORS.length],
         calendar: cleanCalendar(input.calendar),
+        defaultDayUnit: cleanDayUnit(input.defaultDayUnit ?? 'working'),
         baseline: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -207,6 +208,8 @@ export class StoreCore {
         project.color = input.color;
       }
       if (input.calendar !== undefined) project.calendar = cleanCalendar(input.calendar);
+      // Only new tasks and links use this, so changing it moves nothing.
+      if (input.defaultDayUnit !== undefined) project.defaultDayUnit = cleanDayUnit(input.defaultDayUnit);
       project.updatedAt = new Date().toISOString();
       return id;
     }, { actor: cleanActor(input.actor), cause: 'the project calendar' });
@@ -262,7 +265,7 @@ export class StoreCore {
         trackBy: 'duration',
         finish: null,
         duration: 5,
-        durationUnit: 'working',
+        durationUnit: project.defaultDayUnit ?? 'working',
         milestone: false,
         manual: false,
         onTimeline: false,
@@ -282,7 +285,7 @@ export class StoreCore {
         task.parentId = parent.id;
         task.start = parent.start;
       }
-      applyFields(task, input);
+      applyFields(task, withLinkDefaults(input, task, project));
       normalizeStatus(task, input, 'not_started');
       if (input.milestone) task.duration = 0;
       if (input.trackBy !== undefined && cleanTrackBy(input.trackBy) === 'dates') {
@@ -325,7 +328,7 @@ export class StoreCore {
       // Where the task sits now, for anything about to hold it in place.
       const here = { start: task.schedStart ?? task.start, end: task.schedEnd ?? task.finish ?? task.start };
       if (patch.manual === true && !task.manual && patch.start === undefined) task.start = here.start;
-      applyFields(task, patch);
+      applyFields(task, withLinkDefaults(patch, task, project));
       if (patch.start !== undefined || patch.manual === true) task.startSet = true;
       if (patch.startSet === false) task.startSet = false;
       if (wantsDates && !willBeMilestone) {
@@ -569,6 +572,18 @@ function findTask(draft, id) {
   throw new HttpError(404, 'Task not found.');
 }
 
+// A link that doesn't say which days it counts keeps what it had, or if it's new takes
+// the project's default.
+function withLinkDefaults(input, task, project) {
+  if (!Array.isArray(input.deps)) return input;
+  const deps = input.deps.map((dep) => {
+    if (dep?.lagUnit !== undefined) return dep;
+    const existing = task.deps.find((d) => d.taskId === dep?.taskId);
+    return { ...dep, lagUnit: existing ? existing.lagUnit ?? 'working' : project.defaultDayUnit ?? 'working' };
+  });
+  return { ...input, deps };
+}
+
 function applyFields(task, input) {
   if (input.name !== undefined) task.name = cleanString(input.name, 'Task name', { required: true });
   if (input.notes !== undefined) task.notes = cleanString(input.notes, 'Notes', { max: 10000 });
@@ -721,6 +736,7 @@ function parseImport(payload) {
       owner: cleanString(raw.owner, `${where} owner`, { max: 100 }),
       color: COLORS.includes(raw.color) ? raw.color : COLORS[index % COLORS.length],
       calendar: cleanCalendar(raw.calendar),
+      defaultDayUnit: cleanDayUnit(raw.defaultDayUnit ?? 'working'),
       baseline: parseBaseline(raw.baseline, own),
       createdAt: isoTimestamp(raw.createdAt),
       updatedAt: isoTimestamp(raw.updatedAt),
