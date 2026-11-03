@@ -190,7 +190,7 @@ export function parseLag(value, badInput = false) {
   return Number.isInteger(lag) ? lag : null;
 }
 
-export const LAG_HELP = 'Lag must be a whole number of working days, such as 3, or -2 to overlap.';
+export const LAG_HELP = 'Lag must be a whole number of days, such as 3, or -2 to overlap.';
 
 // Picks the whole value on the way in, so typing replaces the 0 instead of adding to it.
 export const selectOnFocus = (event) => {
@@ -202,7 +202,10 @@ export const selectOnFocus = (event) => {
   }, 0);
 };
 
-const workingDays = (n) => `${Math.abs(n)} working ${Math.abs(n) === 1 ? 'day' : 'days'}`;
+// Durations and lags count working days unless they say otherwise.
+export const dayWord = (unit) => (unit === 'calendar' ? 'calendar day' : 'working day');
+const daysOf = (n, unit) => plural(Math.abs(n), dayWord(unit));
+export const shortDuration = (n, unit) => `${n}${unit === 'calendar' ? 'cd' : 'd'}`;
 
 // A dependency in plain English: dep is { type, lag }, and each task is { name, milestone }.
 // A firm link is a rule both ways. Any other only sets the earliest date, so says so.
@@ -214,23 +217,28 @@ export function describeDep(dep, successor, predecessor, firm = false) {
   const lag = dep.lag | 0;
   const earliest = firm ? '' : 'no earlier than ';
   let when;
-  if (lag > 0) when = `${earliest}${workingDays(lag)} after`;
-  else if (lag < 0) when = `${earliest}${workingDays(lag)} before`;
-  else when = dep.type === 'FS' && !successor.milestone ? 'after' : earliest.trim();
+  if (lag > 0) when = `${earliest}${daysOf(lag, dep.lagUnit)} after`;
+  else if (lag < 0) when = `${earliest}${daysOf(lag, dep.lagUnit)} before`;
+  else if (dep.type === 'FS' && !successor.milestone) when = dep.lagUnit === 'calendar' ? 'the calendar day after' : 'after';
+  else when = earliest.trim();
   return `"${successor.name}" ${verb} ${when} "${predecessor.name}" ${event}.`;
 }
 
 // Where a task sits against a link right now, when that isn't exactly what the link says.
-export function describeLinkBuffer(buffer, name, firm = false) {
-  if (buffer > 0 && firm) return `Right now "${name}" is ${workingDays(buffer)} later than this link allows.`;
-  if (buffer > 0) return `Right now "${name}" is ${workingDays(buffer)} later than this link requires, which is allowed. A link only sets the earliest date.`;
-  if (buffer < 0) return `Right now "${name}" is ${workingDays(buffer)} earlier than this link allows.`;
+export function describeLinkBuffer(buffer, name, firm = false, unit = 'working') {
+  if (buffer > 0 && firm) return `Right now "${name}" is ${daysOf(buffer, unit)} later than this link allows.`;
+  if (buffer > 0) return `Right now "${name}" is ${daysOf(buffer, unit)} later than this link requires, which is allowed. A link only sets the earliest date.`;
+  if (buffer < 0) return `Right now "${name}" is ${daysOf(buffer, unit)} earlier than this link allows.`;
   return null;
 }
 
 export const FIRM_NOTE = 'Firm link: it can\'t be later than this, and has no more float than the task it follows. This differs from the standard meaning of a negative SS or SF, which only sets the earliest date.';
 
-export const depSuffix = (dep) => `${dep.type}${dep.lag ? (dep.lag > 0 ? `+${dep.lag}d` : `${dep.lag}d`) : ''}`;
+export const depSuffix = (dep) => {
+  const calendar = dep.lagUnit === 'calendar';
+  if (!dep.lag && !calendar) return dep.type;
+  return `${dep.type}${dep.lag < 0 ? '' : '+'}${shortDuration(dep.lag | 0, dep.lagUnit)}`;
+};
 
 export const statusPill = (status) => h('span', { class: `pill ${STATUS[status].cls}` }, STATUS[status].mark, ' ', STATUS[status].label);
 export const healthPill = (health) => h('span', { class: `pill ${HEALTH[health].cls}` }, HEALTH[health].mark, ' ', HEALTH[health].label);

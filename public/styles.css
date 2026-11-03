@@ -251,7 +251,7 @@ table.grid { width: 100%; border-collapse: collapse; }
 .callout { padding: 8px 10px; border-radius: 8px; font-size: 12.5px; background: var(--surface-2); color: var(--ink-2); }
 .callout.warn { background: var(--warn-soft); color: var(--warn); }
 .callout.bad { background: var(--bad-soft); color: var(--bad); }
-.dep-row { display: grid; grid-template-columns: minmax(0, 1fr) 78px 62px 30px; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.dep-row { display: grid; grid-template-columns: minmax(0, 1fr) 62px 54px 84px 30px; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .dep-row .dep-name { min-width: 0; font-size: 13px; }
 .dep-plain { margin: 0; font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
 .dep-row .dep-plain, .dep-row .dep-standing { grid-column: 1 / -1; }
@@ -264,12 +264,23 @@ table.grid { width: 100%; border-collapse: collapse; }
   #app.has-drawer { padding-right: min(480px, 100vw); }
   #app.has-drawer .drawer { box-shadow: none; }
 }
+/* On a narrow panel the task's name gets its own line, and its settings share the next. */
+@media (max-width: 520px) {
+  .dep-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr) 38px; }
+  .dep-row .dep-name { grid-column: 1 / -1; }
+}
 .dep-add { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; gap: 6px; }
 .feed { display: flex; flex-direction: column; }
-.feed-item { position: relative; padding: 0 0 14px 18px; border-left: 1px solid var(--border); margin-left: 4px; }
+/* The line runs down the middle: posted updates on the left, recorded changes on the right. */
+.feed-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.feed-sides > :first-child { text-align: right; }
+.feed-item { position: relative; width: 50%; margin-left: 50%; padding: 0 0 14px 14px; border-left: 1px solid var(--border); }
 .feed-item:last-child { border-left-color: transparent; }
-.feed-item::before { content: ""; position: absolute; left: -5px; top: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--surface); border: 2px solid var(--border-strong); }
-.feed-item.update::before { background: var(--accent); border-color: var(--accent); }
+.feed-item::before { content: ""; position: absolute; left: -7px; top: 4px; width: 9px; height: 9px; border-radius: 50%; background: var(--surface); border: 2px solid var(--border-strong); }
+.feed-item.update { width: calc(50% + 1px); margin-left: 0; padding: 0 14px 14px 0; border-left: 0; border-right: 1px solid var(--border); }
+.feed-item.update:last-child { border-right-color: transparent; }
+.feed-item.update::before { left: auto; right: -7px; background: var(--accent); border-color: var(--accent); }
+.feed-item.update .feed-meta { text-align: right; }
 .feed-item.schedule::before { border-color: var(--warn); }
 .feed-meta { font-size: 12px; color: var(--ink-3); }
 .feed-meta b { color: var(--ink-2); font-weight: 600; }

@@ -15,6 +15,13 @@
 // finishes 30 days before B starts" also means A can't finish later than that. A still
 // moves with B, but finishing late is a conflict, and A has no more float than B. The
 // FIRM_LEADS setting turns this off.
+//
+// Days count on a clock. A duration or a lag counts working days by default, on the
+// project's calendar. Counting calendar days instead uses a clock with no days off:
+//   - A task with a calendar duration runs through weekends and holidays, and can start
+//     or finish on one.
+//   - A calendar lag lands wherever it lands. A task with a working duration then moves
+//     to a working day: forward, or back for a firm lead, which must stay ahead of its rule.
 
 const DAY_MS = 86400000;
 const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -81,59 +88,72 @@ export function makeCalendar(calendar = {}) {
   return { isWork, next, prev, add, count, diff };
 }
 
+const EVERY_DAY = makeCalendar({ workWeekends: true });
+
+// What a task's duration counts on. A milestone has no duration, so it keeps to working days.
+export const durationClock = (task, cal) => (task.durationUnit === 'calendar' && !task.milestone ? EVERY_DAY : cal);
+const lagClock = (dep, cal) => (dep.lagUnit === 'calendar' ? EVERY_DAY : cal);
+
 const spanOf = (task) => (task.milestone ? 0 : Math.max(1, task.duration | 0) - 1);
 
 export const isFirmLead = (dep) => (dep.type === 'SS' || dep.type === 'SF') && (dep.lag | 0) < 0;
 
 export const tracksDates = (task) => task.trackBy === 'dates' && !task.milestone && isValidDate(task.finish);
 
-// The working days a task tracked by dates spans. At least one, even over a weekend.
+// The days a task tracked by dates spans. At least one, even over a weekend.
 export function datesDuration(task, cal) {
-  return Math.max(1, cal.count(toDayNumber(task.start), toDayNumber(task.finish)));
+  return Math.max(1, durationClock(task, cal).count(toDayNumber(task.start), toDayNumber(task.finish)));
 }
 
-// Earliest start the successor can take given one dependency. `succ` is { milestone, span }.
-function requiredStart(dep, pred, succ, cal) {
+// Earliest start the successor can take given one dependency, or for a firm lead the
+// start it must keep to. `succ` is { milestone, span, clock }.
+function requiredStart(dep, pred, succ, cal, firm = false) {
   const lag = dep.lag | 0;
-  const { span } = succ;
+  const { span, clock } = succ;
+  const days = lagClock(dep, cal);
+  const land = (day) => (firm ? clock.prev(day) : clock.next(day));
+  const startFor = (finish) => clock.add(land(finish), -span);
   switch (dep.type) {
     case 'SS':
-      return cal.add(cal.next(pred.start), lag);
+      return land(days.add(days.next(pred.start), lag));
     case 'FF':
-      return cal.add(cal.add(cal.next(pred.end), lag), -span);
+      return startFor(days.add(days.next(pred.end), lag));
     case 'SF':
-      return cal.add(cal.add(pred.start, lag - 1), -span);
+      return startFor(days.add(pred.start, lag - 1));
     case 'FS':
     default:
       // A milestone sits at the end of the day it lands on, so it can share the
       // predecessor's last day; a real task starts on the next working day.
-      return cal.add(pred.end, succ.milestone ? lag : 1 + lag);
+      return land(days.add(pred.end, succ.milestone ? lag : 1 + lag));
   }
 }
 
-// Latest finish the predecessor can take given a successor's late dates. Working
-// back through the successor's calendar can land short when the two projects have
-// different days off, so the guess is walked forward against the forward rule itself,
-// to the last working day on which the successor would still fit.
-function latestFinish(dep, predSpan, succ, succLate, predCal, succCal) {
+// Latest finish the predecessor can take given a successor's late dates. Working back
+// can land off by a little when the days off differ on each clock, so the guess is walked
+// against the forward rule itself, to the last day on which the successor would still fit.
+// `pred` is { span, clock }.
+function latestFinish(dep, pred, succ, succLate, cal, firm) {
   const lag = dep.lag | 0;
-  const lateStart = succCal.add(succLate, -succ.span);
+  const { span, clock } = pred;
+  const days = lagClock(dep, cal);
+  const lateStart = succ.clock.add(succLate, -succ.span);
   const guess = () => {
     switch (dep.type) {
       case 'SS':
-        return predCal.add(predCal.prev(succCal.add(lateStart, -lag)), predSpan);
+        return clock.add(clock.prev(days.add(lateStart, -lag)), span);
       case 'FF':
-        return predCal.prev(succCal.add(succLate, -lag));
+        return clock.prev(days.add(succLate, -lag));
       case 'SF':
-        return predCal.add(predCal.prev(succCal.add(succLate, 1 - lag)), predSpan);
+        return clock.add(clock.prev(days.add(succLate, 1 - lag)), span);
       case 'FS':
       default:
-        return predCal.prev(succCal.add(lateStart, succ.milestone ? -lag : -1 - lag));
+        return clock.prev(days.add(lateStart, succ.milestone ? -lag : -1 - lag));
     }
   };
-  const fits = (end) => requiredStart(dep, { start: predCal.add(end, -predSpan), end }, succ, succCal) <= lateStart;
+  const fits = (end) => requiredStart(dep, { start: clock.add(end, -span), end }, succ, cal, firm) <= lateStart;
   let finish = guess();
-  for (let i = 0; i < 4000 && fits(predCal.add(finish, 1)); i++) finish = predCal.add(finish, 1);
+  for (let i = 0; i < 4000 && !fits(finish); i++) finish = clock.add(finish, -1);
+  for (let i = 0; i < 4000 && fits(clock.add(finish, 1)); i++) finish = clock.add(finish, 1);
   return finish;
 }
 
@@ -229,18 +249,19 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
     }
     const cal = calendars.get(project.id);
     const byDates = tracksDates(task);
-    const requested = cal.next(toDayNumber(task.start));
+    const clock = durationClock(task, cal);
+    const requested = clock.next(toDayNumber(task.start));
     const span = byDates ? datesDuration(task, cal) - 1 : spanOf(task);
     const pinned = task.manual || task.status === 'complete' || byDates;
     const deps = effectiveDeps.get(id);
     const followsLinks = !pinned && task.startSet === false && deps.length > 0;
-    const shape = { milestone: !!task.milestone, span };
+    const shape = { milestone: !!task.milestone, span, clock };
     let start = followsLinks ? -Infinity : requested;
     let driverId = null;
     let linkStart = null;
     const conflicts = [];
     for (const dep of deps) {
-      const required = requiredStart(dep, dates.get(dep.taskId), shape, cal);
+      const required = requiredStart(dep, dates.get(dep.taskId), shape, cal, isFirm(dep));
       if (linkStart === null || required > linkStart) linkStart = required;
       if (pinned) {
         if (required > start && task.status !== 'complete') conflicts.push(dep.taskId);
@@ -249,7 +270,7 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
         driverId = dep.taskId;
       }
     }
-    dates.set(id, { start, end: cal.add(start, span), requested, driverId, conflicts, pinned, followsLinks, linkStart, shape });
+    dates.set(id, { start, end: clock.add(start, span), requested, driverId, conflicts, pinned, followsLinks, linkStart, shape });
   }
 
   // Backward pass for float and the critical path.
@@ -260,7 +281,7 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
     if (!projectEnd.has(project.id) || end > projectEnd.get(project.id)) projectEnd.set(project.id, end);
   }
   const late = new Map();
-  for (const [id, { project }] of byId) if (!isSummary(id)) late.set(id, projectEnd.get(project.id));
+  for (const [id, { project }] of byId) if (!isSummary(id)) late.set(id, dates.get(id).shape.clock.prev(projectEnd.get(project.id)));
   const backwardPass = () => { for (let i = order.length - 1; i >= 0; i--) {
     const id = order[i];
     if (isSummary(id)) continue;
@@ -271,15 +292,13 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
       const startBased = dep.type === 'SS' || dep.type === 'SF';
       const predLeaves = leavesOf(dep.taskId);
       for (const leaf of predLeaves) {
-        const pred = byId.get(leaf);
-        const predCal = calendars.get(pred.project.id);
-        const { span } = dates.get(leaf).shape;
-        const limit = latestFinish(dep, span, dates.get(id).shape, late.get(id), predCal, succCal);
+        const predShape = dates.get(leaf).shape;
+        const limit = latestFinish(dep, predShape, dates.get(id).shape, late.get(id), succCal, isFirm(dep));
         if (startBased) {
           // A summary starts with its first subtask, so while another subtask holds
           // the summary's start early enough, this one can't affect the link.
           const others = predLeaves.filter((l) => l !== leaf).map((l) => dates.get(l).start);
-          if (others.length && Math.min(...others) <= predCal.add(limit, -span)) continue;
+          if (others.length && Math.min(...others) <= predShape.clock.add(limit, -predShape.span)) continue;
         }
         if (limit < late.get(leaf)) late.set(leaf, limit);
       }
@@ -296,18 +315,18 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
     for (const { id, dep } of firmLinks) {
       const predLeaves = leavesOf(dep.taskId);
       const predLate = {
-        start: Math.min(...predLeaves.map((l) => calendars.get(byId.get(l).project.id).add(late.get(l), -dates.get(l).shape.span))),
+        start: Math.min(...predLeaves.map((l) => dates.get(l).shape.clock.add(late.get(l), -dates.get(l).shape.span))),
         end: Math.max(...predLeaves.map((l) => late.get(l))),
       };
       const cal = calendars.get(byId.get(id).project.id);
       const leaves = leavesOf(id).filter((l) => byId.get(l).task.status !== 'complete');
       for (const leaf of leaves) {
         const d = dates.get(leaf);
-        const latestStart = requiredStart(dep, predLate, d.shape, cal);
+        const latestStart = requiredStart(dep, predLate, d.shape, cal, true);
         // A summary starts with its first subtask, so another one may be holding the rule.
         const others = leaves.filter((l) => l !== leaf).map((l) => dates.get(l).start);
         if (dep.type === 'SS' && others.length && Math.min(...others) <= latestStart) continue;
-        const limit = Math.max(cal.add(latestStart, d.shape.span), d.end);
+        const limit = Math.max(d.shape.clock.add(latestStart, d.shape.span), d.end);
         if (limit < late.get(leaf)) {
           late.set(leaf, limit);
           tightened = true;
@@ -322,20 +341,30 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
     if (!holdFirmLeads()) break;
   }
 
-  // Working days a task sits past what a link needs. Negative means earlier than it
+  // Working days can't measure a task that runs through days off, so a calendar duration
+  // or lag means a link's buffer is in calendar days.
+  const bufferClock = (dep, id) => {
+    const cal = calendars.get(byId.get(id).project.id);
+    const calendarDays = dep.lagUnit === 'calendar' || leavesOf(id).some((leaf) => dates.get(leaf).shape.clock === EVERY_DAY);
+    return calendarDays ? EVERY_DAY : cal;
+  };
+  const bufferUnit = (dep, id) => (bufferClock(dep, id) === EVERY_DAY ? { unit: 'calendar' } : {});
+
+  // Days a task sits past what a link needs. Negative means earlier than it
   // allows. A link on a summary applies to each subtask, so the tightest one counts,
   // except that a firm SF is about the finish of the whole summary: its last subtask.
   const linkBuffer = (dep, id) => {
     const cal = calendars.get(byId.get(id).project.id);
+    const clock = bufferClock(dep, id);
     const buffers = leavesOf(id).map((leaf) => {
       const d = dates.get(leaf);
-      return cal.diff(requiredStart(dep, dates.get(dep.taskId), d.shape, cal), d.start);
+      return clock.diff(requiredStart(dep, dates.get(dep.taskId), d.shape, cal, isFirm(dep)), d.start);
     });
     return isFirm(dep) && dep.type === 'SF' ? Math.max(...buffers) : Math.min(...buffers);
   };
   const linksOf = (task) => (task.deps || [])
     .filter((dep) => byId.has(dep.taskId))
-    .map((dep) => ({ taskId: dep.taskId, buffer: linkBuffer(dep, task.id), firm: isFirm(dep) }));
+    .map((dep) => ({ taskId: dep.taskId, buffer: linkBuffer(dep, task.id), firm: isFirm(dep), ...bufferUnit(dep, task.id) }));
 
   // Later than a firm lead allows is a conflict, whatever put the task there.
   for (const { id, dep } of firmLinks) {
@@ -366,7 +395,7 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
         projectId: project.id,
         start: toIso(d.start),
         end: toIso(d.end),
-        duration: cal.count(d.start, d.end),
+        duration: Math.max(1, cal.count(d.start, d.end)),
         isSummary: true,
         status,
         progress: Math.round(done / total),
@@ -381,7 +410,8 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
       continue;
     }
     const lateFinish = late.get(id);
-    const float = lateFinish >= d.end ? cal.count(d.end, lateFinish) - 1 : -(cal.count(lateFinish, d.end) - 1);
+    const { clock } = d.shape;
+    const float = lateFinish >= d.end ? clock.count(d.end, lateFinish) - 1 : -(clock.count(lateFinish, d.end) - 1);
     const status = task.status;
     computed.set(id, {
       id,
@@ -396,7 +426,7 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
       critical: float <= 0 && status !== 'complete',
       driverId: d.driverId,
       // How far links pushed a date someone set. A task following its links has no such date.
-      delay: d.followsLinks ? 0 : Math.max(0, cal.diff(d.requested, d.start)),
+      delay: d.followsLinks ? 0 : Math.max(0, clock.diff(d.requested, d.start)),
       followsLinks: d.followsLinks,
       linkStart: d.linkStart === null ? null : toIso(d.linkStart),
       links: linksOf(task),
@@ -460,6 +490,8 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
         toTaskId: id,
         type: dep.type,
         lag: dep.lag | 0,
+        ...(dep.lagUnit === 'calendar' ? { lagUnit: 'calendar' } : {}),
+        ...bufferUnit(dep, id),
         buffer,
         firm: isFirm(dep),
         state: buffer < 0 || (isFirm(dep) && buffer > 0) ? 'conflict' : buffer === 0 ? 'driving' : 'buffer',

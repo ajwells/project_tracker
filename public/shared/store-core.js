@@ -3,7 +3,7 @@
 // graph has no loops and the change can be stored, so a rejected edit leaves
 // nothing behind. Subclasses decide where the data is kept.
 
-import { computeSchedule, datesDuration, isValidDate, makeCalendar, toDayNumber, toIso, tracksDates } from './scheduler.js';
+import { computeSchedule, datesDuration, durationClock, isValidDate, makeCalendar, toDayNumber, toIso, tracksDates } from './scheduler.js';
 
 export const EXPORT_FORMAT = 'project-tracker-export';
 export const SCHEMA_VERSION = 1;
@@ -11,6 +11,7 @@ export const SCHEMA_VERSION = 1;
 export const STATUSES = ['not_started', 'in_progress', 'blocked', 'complete'];
 export const DEP_TYPES = ['FS', 'SS', 'FF', 'SF'];
 export const TRACK_BY = ['duration', 'dates'];
+export const DAY_UNITS = ['working', 'calendar'];
 export const COLORS = ['blue', 'orange', 'aqua', 'yellow', 'magenta', 'green', 'violet', 'red'];
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_DURATION = 3650;
@@ -62,9 +63,16 @@ function cleanDeps(value) {
     seen.add(raw.taskId);
     const type = raw.type ?? 'FS';
     if (!DEP_TYPES.includes(type)) throw bad(`Unknown dependency type "${type}".`);
-    deps.push({ taskId: raw.taskId, type, lag: cleanInt(raw.lag ?? 0, 'Lag', -MAX_DURATION, MAX_DURATION) });
+    const lag = cleanInt(raw.lag ?? 0, 'Lag', -MAX_DURATION, MAX_DURATION);
+    // Working days are the default, so only the exception is stored.
+    deps.push({ taskId: raw.taskId, type, lag, ...(cleanDayUnit(raw.lagUnit ?? 'working') === 'calendar' ? { lagUnit: 'calendar' } : {}) });
   }
   return deps;
+}
+
+function cleanDayUnit(value) {
+  if (!DAY_UNITS.includes(value)) throw bad('Days are counted as working days or calendar days.');
+  return value;
 }
 
 function cleanTrackBy(value) {
@@ -106,6 +114,7 @@ const FIELD_LABELS = {
   start: 'Start',
   finish: 'Finish',
   duration: 'Duration',
+  durationUnit: 'Duration counts',
   status: 'Status',
   progress: 'Progress',
   pocName: 'Current POC',
@@ -253,6 +262,7 @@ export class StoreCore {
         trackBy: 'duration',
         finish: null,
         duration: 5,
+        durationUnit: 'working',
         milestone: false,
         manual: false,
         onTimeline: false,
@@ -278,7 +288,8 @@ export class StoreCore {
       if (input.trackBy !== undefined && cleanTrackBy(input.trackBy) === 'dates') {
         if (task.milestone) throw bad(MILESTONE_DATES);
         const cal = makeCalendar(project.calendar);
-        const end = input.end === undefined ? toIso(cal.add(cal.next(toDayNumber(task.start)), Math.max(1, task.duration) - 1)) : cleanDate(input.end, 'Finish');
+        const clock = durationClock(task, cal);
+        const end = input.end === undefined ? toIso(clock.add(clock.next(toDayNumber(task.start)), Math.max(1, task.duration) - 1)) : cleanDate(input.end, 'Finish');
         trackByDates(task, task.start, end, cal);
       }
       assertDepsExist(draft, task);
@@ -299,7 +310,7 @@ export class StoreCore {
       const patch = { ...input };
       if (isSummary) {
         // Summary dates, status and progress roll up from their subtasks.
-        for (const field of ['start', 'duration', 'end', 'status', 'progress', 'milestone', 'manual', 'trackBy', 'startSet']) delete patch[field];
+        for (const field of ['start', 'duration', 'durationUnit', 'end', 'status', 'progress', 'milestone', 'manual', 'trackBy', 'startSet']) delete patch[field];
       }
       if (patch.milestone && project.tasks.some((t) => t.parentId === task.id)) {
         throw bad('A task with subtasks cannot become a milestone.');
@@ -333,7 +344,7 @@ export class StoreCore {
         if (schedule.cycle) throw cycleError(draft, schedule.cycle);
         const start = toDayNumber(schedule.tasks.get(task.id).start);
         if (toDayNumber(end) < start) throw bad('Finish cannot be before the scheduled start.');
-        if (!task.milestone) task.duration = Math.min(MAX_DURATION, Math.max(1, cal.count(start, toDayNumber(end))));
+        if (!task.milestone) task.duration = Math.min(MAX_DURATION, Math.max(1, durationClock(task, cal).count(start, toDayNumber(end))));
       }
       if (patch.milestone === true) task.duration = 0;
       if (patch.milestone === false && task.duration === 0) task.duration = 1;
@@ -350,7 +361,7 @@ export class StoreCore {
     }, {
       actor,
       cause: taskId,
-      skipScheduleFor: input.start !== undefined || input.end !== undefined || input.duration !== undefined ? taskId : null,
+      skipScheduleFor: input.start !== undefined || input.end !== undefined || input.duration !== undefined || input.durationUnit !== undefined ? taskId : null,
     });
   }
 
@@ -563,6 +574,7 @@ function applyFields(task, input) {
   if (input.notes !== undefined) task.notes = cleanString(input.notes, 'Notes', { max: 10000 });
   if (input.start !== undefined) task.start = cleanDate(input.start, 'Start');
   if (input.duration !== undefined) task.duration = cleanInt(input.duration, 'Duration', 0, MAX_DURATION);
+  if (input.durationUnit !== undefined) task.durationUnit = cleanDayUnit(input.durationUnit);
   if (input.progress !== undefined) task.progress = cleanInt(input.progress, 'Progress', 0, 100);
   if (input.status !== undefined) {
     if (!STATUSES.includes(input.status)) throw bad('Unknown status.');
@@ -637,6 +649,7 @@ function historyView(draft, task) {
     start: task.start,
     finish: task.trackBy === 'dates' ? task.finish : '',
     duration: task.milestone ? 0 : task.duration,
+    durationUnit: task.durationUnit === 'calendar' ? 'Calendar days' : 'Working days',
     status: task.status,
     progress: task.progress,
     pocName: task.pocName,
@@ -646,10 +659,16 @@ function historyView(draft, task) {
     onTimeline: task.onTimeline,
     parent: task.parentId ? taskLabel(draft, task.parentId, project.id) : '',
     deps: task.deps
-      .map((d) => `${taskLabel(draft, d.taskId, project.id)} (${d.type}${d.lag ? (d.lag > 0 ? `+${d.lag}d` : `${d.lag}d`) : ''})`)
+      .map((d) => `${taskLabel(draft, d.taskId, project.id)} (${depLabel(d)})`)
       .join(', '),
   };
 }
+
+const depLabel = (d) => {
+  const days = d.lagUnit === 'calendar' ? 'cd' : 'd';
+  if (!d.lag) return d.lagUnit === 'calendar' ? `${d.type}+0${days}` : d.type;
+  return `${d.type}${d.lag > 0 ? '+' : ''}${d.lag}${days}`;
+};
 
 function diffViews(before, after) {
   const changes = [];
@@ -730,6 +749,7 @@ function parseImportedTask(raw, where, taskIds) {
     trackBy,
     finish,
     duration: milestone ? 0 : cleanInt(raw.duration ?? 1, `${where} duration`, 0, MAX_DURATION),
+    durationUnit: cleanDayUnit(raw.durationUnit ?? 'working'),
     milestone,
     manual: !!raw.manual,
     onTimeline: !!raw.onTimeline,

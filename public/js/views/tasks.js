@@ -1,5 +1,5 @@
 import { api, ctx } from '../ctx.js';
-import { depSuffix, describeDep, fmtDate, h, healthPill, icon, statusPill, STATUS } from '../util.js';
+import { dayWord, depSuffix, describeDep, fmtDate, h, healthPill, icon, plural, shortDuration, statusPill, STATUS } from '../util.js';
 import { currentMode, projectColor } from '../chart/core.js';
 import { orderedTasks } from '../chart/gantt.js';
 
@@ -8,7 +8,7 @@ export function predecessorChips(task, project) {
     const found = ctx.findTask(dep.taskId);
     if (!found) return null;
     const cross = found.project.id !== project.id;
-    const suffix = dep.type === 'FS' && !dep.lag ? '' : ` ${depSuffix(dep)}`;
+    const suffix = depSuffix(dep) === 'FS' ? '' : ` ${depSuffix(dep)}`;
     const label = cross ? `${found.project.name} › ${found.task.computed.wbs}${suffix}` : `${found.task.computed.wbs}${suffix}`;
     return h('span', { class: `dep-chip ${cross ? 'cross' : ''}`, title: describeDep(dep, task, found.task, ctx.isFirm(dep)) }, label);
   });
@@ -115,7 +115,7 @@ export function renderTasks(view, project) {
     h('td', { 'data-label': 'Health' }, healthPill(c.health)),
     h('td', { class: 'nowrap num', 'data-label': 'Start' }, fmtDate(c.start)),
     h('td', { class: 'nowrap num', 'data-label': 'Finish' }, fmtDate(c.end)),
-    h('td', { class: 'num hide-card', style: { textAlign: 'right' } }, task.milestone ? '—' : `${c.duration}d`),
+    h('td', { class: 'num hide-card', style: { textAlign: 'right' }, title: task.milestone ? null : plural(c.duration, dayWord(task.durationUnit)) }, task.milestone ? '—' : shortDuration(c.duration, task.durationUnit)),
     h('td', { 'data-label': 'Progress' },
       h('div', { class: 'mini-progress' },
         h('div', { class: 'progress' }, h('i', { style: { width: `${c.progress}%`, background: color } })),

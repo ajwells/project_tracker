@@ -1,7 +1,7 @@
 // The task panel: details, current POC, dependencies and the full history.
 
 import { api, ctx } from '../ctx.js';
-import { confirmDialog, DEP_TYPES, describeDep, describeLinkBuffer, FIRM_NOTE, fmtDate, fmtWhen, h, healthPill, icon, LAG_HELP, morph, parseLag, plural, selectOnFocus, STATUS, toast } from '../util.js';
+import { confirmDialog, DEP_TYPES, dayWord, describeDep, describeLinkBuffer, FIRM_NOTE, fmtDate, fmtWhen, h, healthPill, icon, LAG_HELP, morph, parseLag, plural, selectOnFocus, STATUS, toast } from '../util.js';
 import { orderedTasks } from '../chart/gantt.js';
 import { openNameDialog } from './dialogs.js';
 
@@ -115,7 +115,10 @@ function buildDrawer({ project, task }) {
       h('option', { value: 'dates', selected: byDates }, 'Dates (duration fills in)')), 'full'),
     field(task.milestone ? 'Date' : 'Start', dateInput('start', c.start, summary)),
     task.milestone ? null : field('Finish', dateInput('end', c.end, summary || !byDates)),
-    task.milestone ? null : field('Working days', input('duration', c.duration, 'number', { min: 1, max: 3650, disabled: summary || byDates })),
+    task.milestone ? null : field(summary ? 'Working days' : 'Duration', input('duration', c.duration, 'number', { min: 1, max: 3650, disabled: summary || byDates })),
+    summary || task.milestone ? null : field('Counted in', h('select', { name: 'durationUnit', onchange: (e) => patch({ durationUnit: e.target.value }) },
+      h('option', { value: 'working', selected: task.durationUnit !== 'calendar' }, 'Working days'),
+      h('option', { value: 'calendar', selected: task.durationUnit === 'calendar' }, 'Calendar days'))),
     h('datalist', { id: 'poc-names' }, ctx.pocNames().map((n) => h('option', { value: n }))));
 
   const notices = [];
@@ -133,7 +136,7 @@ function buildDrawer({ project, task }) {
     const driver = ctx.findTask(c.driverId);
     if (driver) {
       const where = driver.project.id === project.id ? '' : ` in ${driver.project.name}`;
-      notices.push(h('div', { class: 'callout warn' }, `▲ Pushed ${plural(c.delay, 'working day')} past the set start (${fmtDate(task.start)}) by "${driver.task.name}"${where}.`));
+      notices.push(h('div', { class: 'callout warn' }, `▲ Pushed ${plural(c.delay, dayWord(task.durationUnit))} past the set start (${fmtDate(task.start)}) by "${driver.task.name}"${where}.`));
     }
   }
   const firmBroken = new Set((c.links ?? []).filter((l) => l.firm && l.buffer > 0).map((l) => l.taskId));
@@ -149,7 +152,7 @@ function buildDrawer({ project, task }) {
   const scheduleLine = h('div', { class: 'row wrap' },
     healthPill(c.health),
     c.critical ? h('span', { class: 'pill bad' }, '! Critical path') : null,
-    !c.critical && !done && c.float > 0 ? h('span', { class: 'pill' }, `${plural(c.float, 'day')} of float`) : null);
+    !c.critical && !done && c.float > 0 ? h('span', { class: 'pill' }, `${plural(c.float, task.durationUnit === 'calendar' ? 'calendar day' : 'day')} of float`) : null);
 
   const options = h('div', { class: 'stack', style: { gap: '8px' } },
     summary ? null : h('label', { class: 'check' },
@@ -214,9 +217,10 @@ function dependenciesSection(project, task, patch) {
     if (!found) return null;
     const cross = found.project.id !== project.id;
     const change = (fields) => setDeps(task.deps.map((d, i) => (i === index ? { ...d, ...fields } : d)));
-    const buffer = task.computed.links.find((l) => l.taskId === dep.taskId)?.buffer ?? 0;
+    const link = task.computed.links.find((l) => l.taskId === dep.taskId);
+    const buffer = link?.buffer ?? 0;
     const firm = ctx.isFirm(dep);
-    const standing = task.computed.status === 'complete' ? null : describeLinkBuffer(buffer, task.name, firm);
+    const standing = task.computed.status === 'complete' ? null : describeLinkBuffer(buffer, task.name, firm, link?.unit);
     return h('div', { class: 'dep-row' },
       h('div', { class: 'dep-name' },
         h('button', {
@@ -228,7 +232,7 @@ function dependenciesSection(project, task, patch) {
       h('select', { 'aria-label': 'Dependency type', title: DEP_TYPES[dep.type], onchange: (e) => change({ type: e.target.value }) },
         Object.keys(DEP_TYPES).map((t) => h('option', { value: t, selected: dep.type === t, title: DEP_TYPES[t] }, t))),
       h('input', {
-        type: 'number', 'aria-label': 'Lag in working days', title: 'Lag in working days (negative overlaps)', value: dep.lag, onfocus: selectOnFocus,
+        type: 'number', 'aria-label': 'Lag in days', title: 'Lag in days (negative overlaps)', value: dep.lag, onfocus: selectOnFocus,
         onchange: (e) => {
           const lag = parseLag(e.target.value, e.target.validity.badInput);
           if (lag === null) {
@@ -239,6 +243,9 @@ function dependenciesSection(project, task, patch) {
           change({ lag });
         },
       }),
+      h('select', { 'aria-label': 'Lag counted in', title: 'Lag counts working days or calendar days', onchange: (e) => change({ lagUnit: e.target.value }) },
+        h('option', { value: 'working', selected: dep.lagUnit !== 'calendar' }, 'Working'),
+        h('option', { value: 'calendar', selected: dep.lagUnit === 'calendar' }, 'Calendar')),
       h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': `Remove ${found.task.name}`, onclick: () => setDeps(task.deps.filter((_, i) => i !== index)) }, icon('x')),
       h('p', { class: 'dep-plain' }, describeDep(dep, task, found.task, firm)),
       standing ? h('p', { class: `dep-standing ${buffer < 0 || firm ? 'bad' : ''}` }, standing) : null,
@@ -327,6 +334,7 @@ function historySection(task) {
     h('div', { class: 'row', style: { justifyContent: 'space-between' } },
       h('button', { class: 'btn ghost small', type: 'button', style: { paddingLeft: 0 }, onclick: openNameDialog }, `Posting as ${ctx.actor || 'Anonymous'}`),
       h('button', { class: 'btn primary', type: 'button', onclick: post }, 'Post update')),
+    task.history.length ? h('div', { class: 'feed-sides small muted' }, h('span', {}, 'Updates'), h('span', {}, 'Changes')) : null,
     h('div', { class: 'feed' }, items));
 }
 

@@ -9,7 +9,7 @@ import { openLinkDialog } from './dialogs.js';
 function linkPill(link) {
   if (link.state === 'conflict') return h('span', { class: 'pill bad', title: 'The dependency is being violated by a manually scheduled or pinned task.' }, '! ', 'Conflict');
   if (link.state === 'driving') return h('span', { class: 'pill warn', title: 'Any slip upstream moves the downstream task.' }, '▲ ', 'No buffer');
-  return h('span', { class: 'pill good' }, '● ', `${plural(link.buffer, 'day')} buffer`);
+  return h('span', { class: 'pill good' }, '● ', `${plural(link.buffer, link.unit === 'calendar' ? 'calendar day' : 'day')} buffer`);
 }
 
 function taskCell(project, task, dateLabel, date, mode) {

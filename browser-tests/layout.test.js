@@ -4,7 +4,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONCURRENCY, click, launchBrowser, openApp, openTask, pressText, project, soon, task, type,
+  CONCURRENCY, click, launchBrowser, openApp, openTask, pressText, project, savedTask, soon, task, type,
 } from './helpers.js';
 
 const projects = () => [
@@ -353,7 +353,7 @@ describe('the task panel and the page', { concurrency: CONCURRENCY }, () => {
     const plain = () => page.$eval('dialog .dep-plain', (p) => p.textContent);
     await page.waitForSelector('dialog .dep-plain');
     assert.equal(await plain(), '"pred" starts after "far" finishes.');
-    await page.select('dialog .field-grid:last-of-type select', 'SF');
+    await (await page.$$('dialog select')).at(-2).select('SF');
     await click(page, 'dialog input[type=number]', { at: 0.3 });
     await type(page, '-30');
     await soon(async () => assert.equal(await plain(), '"pred" finishes 30 working days before "far" starts.'));
@@ -365,4 +365,154 @@ describe('the task panel and the page', { concurrency: CONCURRENCY }, () => {
     await pressText(page, 'dialog button', 'Add link');
     await soon(async () => assert.match(await page.$eval('.main', (m) => m.textContent), /"pred" starts after "far" finishes\./));
   });
+
+  for (const [size, viewport] of [['a wide window', WIDE], ['a small phone', { width: 320, height: 640, isMobile: true, hasTouch: true }]]) {
+    scenario(`in ${size} the history puts posted updates and recorded changes on opposite sides of the line`, viewport, '#/p/proj/tasks', async (page) => {
+      await openTask(page, 'succ');
+      const box = '.drawer textarea[aria-label="Post an update"]';
+      await click(page, box);
+      await type(page, `A${'very'.repeat(40)} long update`);
+      await pressText(page, '.drawer button', 'Post update');
+      await page.waitForSelector('.feed-item.update');
+      await click(page, '.drawer [name=pocName]');
+      await type(page, 'Ana');
+      await page.keyboard.press('Tab');
+      await page.waitForSelector('.feed-change');
+
+      await soon(async () => {
+        const feed = await page.$eval('.feed', (f) => {
+          const box = f.getBoundingClientRect();
+          const line = box.left + box.width / 2;
+          return {
+            line,
+            fits: f.scrollWidth <= f.clientWidth && box.right <= innerWidth,
+            sides: [...f.children].map((item) => {
+              const content = [...item.children].map((c) => c.getBoundingClientRect());
+              const edge = item.classList.contains('update') ? item.getBoundingClientRect().right - 1 : item.getBoundingClientRect().left;
+              return {
+                kind: item.classList.contains('update') ? 'update' : 'other',
+                left: Math.min(...content.map((c) => c.left)),
+                right: Math.max(...content.map((c) => c.right)),
+                edge,
+              };
+            }),
+          };
+        });
+        assert.ok(feed.fits, 'the history fits the panel');
+        // Newest first, whichever side each entry is on.
+        assert.deepEqual(feed.sides.map((s) => s.kind), ['other', 'update']);
+        for (const side of feed.sides) {
+          assert.ok(Math.abs(side.edge - feed.line) <= 1, `the line stays in one place: ${side.edge} vs ${feed.line}`);
+          if (side.kind === 'update') assert.ok(side.right <= feed.line, `update ends left of the line: ${side.right} vs ${feed.line}`);
+          else assert.ok(side.left >= feed.line, `change starts right of the line: ${side.left} vs ${feed.line}`);
+        }
+        assert.deepEqual(await page.$eval('.feed-sides', (s) => [...s.children].map((c) => c.textContent)), ['Updates', 'Changes']);
+      });
+    });
+  }
+
+  // ---- working or calendar days ----
+
+  scenario('counting a duration in calendar days moves the finish and keeps the number', WIDE, '#/p/proj/tasks', async (page) => {
+    await openTask(page, 'pred');
+    const finish = () => page.$eval('.drawer [name=end]', (el) => el.value);
+    assert.equal(await finish(), '2026-11-17');
+    await page.select('.drawer [name=durationUnit]', 'calendar');
+    await soon(async () => {
+      assert.equal(await finish(), '2026-11-15');
+      assert.equal(await page.$eval('.drawer [name=duration]', (el) => el.value), '5');
+      assert.equal((await savedTask(page, 'pred')).durationUnit, 'calendar');
+      assert.equal(await page.$eval('.drawer [name=durationUnit]', (el) => el.value), 'calendar');
+      // The task list says which days it means.
+      const cell = await page.$eval('tr.clickable td.num.hide-card', (td) => [td.textContent, td.title]);
+      assert.deepEqual(cell, ['5cd', '5 calendar days']);
+      assert.match(await page.$eval('.feed', (el) => el.textContent), /Duration counts: Working days → Calendar days/);
+    });
+  });
+
+  scenario('tracked by dates, counting calendar days changes the number and keeps the dates', WIDE, '#/p/proj/tasks', async (page) => {
+    await openTask(page, 'pred');
+    await page.select('.drawer [name=trackBy]', 'dates');
+    await soon(async () => assert.equal(await page.$eval('.drawer [name=end]', (el) => el.disabled), false));
+    await page.select('.drawer [name=durationUnit]', 'calendar');
+    await soon(async () => {
+      assert.equal(await page.$eval('.drawer [name=duration]', (el) => el.value), '7');
+      assert.equal(await page.$eval('.drawer [name=end]', (el) => el.value), '2026-11-17');
+    });
+  });
+
+  scenario('a task with no history has no sides to label', WIDE, '#/p/proj/tasks', async (page) => {
+    await openTask(page, 'pred');
+    assert.equal(await page.$('.feed-sides'), null);
+  });
+
+  scenario('summaries and milestones have no unit to choose', WIDE, '#/p/proj/tasks', async (page) => {
+    await openTask(page, 'gate');
+    assert.equal(await page.$('.drawer [name=durationUnit]'), null);
+  });
+
+  scenario('a link can count calendar days, and its sentence and date follow', WIDE, '#/p/proj/tasks', async (page) => {
+    await openTask(page, 'free');
+    const plain = () => page.$eval('.dep-row .dep-plain', (el) => el.textContent);
+    const start = () => page.$eval('.drawer [name=start]', (el) => el.value);
+    assert.match(await plain(), /30 working days before/);
+    const working = await start();
+    await page.select('.dep-row select[aria-label="Lag counted in"]', 'calendar');
+    await soon(async () => {
+      assert.match(await plain(), /30 calendar days before/);
+      assert.equal((await savedTask(page, 'free')).deps[0].lagUnit, 'calendar');
+      assert.equal((await savedTask(page, 'free')).deps[0].lag, -30);
+      assert.notEqual(await start(), working);
+      assert.equal(await page.$eval('.dep-row select[aria-label="Lag counted in"]', (el) => el.value), 'calendar');
+    });
+    // Changing another part of the link keeps the unit.
+    await page.select('.dep-row select[aria-label="Dependency type"]', 'SS');
+    await soon(async () => {
+      const [link] = (await savedTask(page, 'free')).deps;
+      assert.deepEqual([link.type, link.lagUnit], ['SS', 'calendar']);
+    });
+    await soon(async () => assert.match(await page.$eval('tr.clickable:nth-child(3) .dep-chip', (el) => el.textContent), /SS-30cd/));
+  });
+
+  scenario('the cross-project dialog can count calendar days', WIDE, '#/p/proj/links', async (page) => {
+    await pressText(page, 'button', 'Add cross-project link');
+    await page.waitForSelector('dialog .dep-plain');
+    await click(page, 'dialog input[type=number]', { at: 0.3 });
+    await type(page, '4');
+    const choices = await page.$$('dialog select');
+    await choices.at(-1).select('calendar');
+    await soon(async () => assert.match(await page.$eval('dialog .dep-plain', (el) => el.textContent), /4 calendar days after/));
+    await pressText(page, 'dialog button', 'Add link');
+    await soon(async () => {
+      const links = (await savedTask(page, 'pred')).deps;
+      assert.deepEqual(links.map((l) => [l.lag, l.lagUnit]), [[4, 'calendar']]);
+      assert.match(await page.$eval('.main', (m) => m.textContent), /FS\+4cd/);
+    });
+  });
+
+  for (const width of [320, 390]) {
+    scenario(`at ${width}px every setting on a link fits and can be used`, { width, height: 700, isMobile: true, hasTouch: true }, '#/p/proj/tasks', async (page) => {
+      await openTask(page, 'free');
+      await page.waitForSelector('.dep-row');
+      const layout = await page.$eval('.dep-row', (row) => {
+        const box = (el) => el.getBoundingClientRect();
+        const outer = box(row);
+        const controls = [...row.querySelectorAll('select, input, button.icon')].map(box);
+        return {
+          scrolls: document.querySelector('.drawer-body').scrollWidth > document.querySelector('.drawer-body').clientWidth,
+          inside: controls.every((c) => c.left >= outer.left - 1 && c.right <= outer.right + 1),
+          minWidth: Math.min(...controls.map((c) => c.width)),
+          sameLine: new Set(controls.map((c) => Math.round(c.top + c.height / 2))).size === 1,
+          nameAbove: box(row.querySelector('.dep-name')).bottom <= controls[0].top + 1,
+          overlap: controls.some((c, i) => i && c.left < controls[i - 1].right),
+          unitClipped: (() => {
+            const unit = row.querySelector('select[aria-label="Lag counted in"]');
+            return unit.getBoundingClientRect().width < 74;
+          })(),
+        };
+      });
+      assert.deepEqual(layout, { ...layout, scrolls: false, inside: true, sameLine: true, nameAbove: true, overlap: false, unitClipped: false });
+      assert.ok(layout.minWidth >= 38, `smallest control is ${layout.minWidth}px`);
+    });
+  }
 });

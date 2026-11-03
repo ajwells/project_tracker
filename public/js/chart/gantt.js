@@ -322,12 +322,13 @@ export const allPrimitives = (layout) => {
 function tipFor(task, projectName) {
   const c = task.computed;
   const when = c.start === c.end ? fmtDate(c.start, true) : `${fmtDate(c.start)} – ${fmtDate(c.end, true)}`;
+  const dayName = task.durationUnit === 'calendar' ? 'calendar day' : 'day';
   const lines = [task.name];
   if (projectName) lines.push(projectName);
-  lines.push(`${when}${task.milestone ? '' : ` · ${plural(c.duration, 'day')}`}`);
+  lines.push(`${when}${task.milestone ? '' : ` · ${plural(c.duration, dayName)}`}`);
   lines.push(`${c.progress}% complete${task.pocName ? ` · POC: ${task.pocName}` : ''}`);
   if (c.critical) lines.push('On the critical path');
-  else if (c.float > 0 && c.status !== 'complete') lines.push(`${plural(c.float, 'day')} of float`);
+  else if (c.float > 0 && c.status !== 'complete') lines.push(`${plural(c.float, dayName)} of float`);
   return lines.join('\n');
 }
 

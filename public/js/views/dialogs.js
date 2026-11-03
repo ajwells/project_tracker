@@ -137,13 +137,14 @@ export function openLinkDialog(project) {
     const to = ctx.findTask(toTask.value);
     const from = ctx.findTask(fromTask.value);
     const lagDays = parseLag(lag.value, lag.validity.badInput);
-    plain.textContent = to && from && lagDays !== null ? describeDep({ type: type.value, lag: lagDays }, to.task, from.task, ctx.isFirm({ type: type.value, lag: lagDays })) : '';
+    plain.textContent = to && from && lagDays !== null ? describeDep({ type: type.value, lag: lagDays, lagUnit: lagUnit.value }, to.task, from.task, ctx.isFirm({ type: type.value, lag: lagDays })) : '';
   };
   const toTask = h('select', { onchange: () => describe() });
   const fromProject = h('select', { onchange: () => syncFrom() });
   const fromTask = h('select', { onchange: () => describe() });
   const type = h('select', { onchange: () => describe() }, Object.entries(DEP_TYPES).map(([k, v]) => h('option', { value: k }, `${v} (${k})`)));
   const lag = h('input', { type: 'number', value: 0, onfocus: selectOnFocus, oninput: () => describe() });
+  const lagUnit = h('select', { onchange: () => describe() }, h('option', { value: 'working' }, 'Working days'), h('option', { value: 'calendar' }, 'Calendar days'));
 
   function syncFrom() {
     fromTask.replaceChildren(...taskOptions(ctx.project(fromProject.value)));
@@ -172,7 +173,7 @@ export function openLinkDialog(project) {
       toast(LAG_HELP, 'error');
       return;
     }
-    const deps = [...task.deps, { taskId: fromTask.value, type: type.value, lag: lagDays }];
+    const deps = [...task.deps, { taskId: fromTask.value, type: type.value, lag: lagDays, lagUnit: lagUnit.value }];
     if (await api('PATCH', `/api/tasks/${task.id}`, { deps })) close();
   };
 
@@ -183,7 +184,8 @@ export function openLinkDialog(project) {
       h('div', { class: 'field-grid' }, field('Project', toProject), field('Task', toTask)),
       h('h3', {}, '…depends on'),
       h('div', { class: 'field-grid' }, field('Project', fromProject), field('Task', fromTask)),
-      h('div', { class: 'field-grid' }, field('Type', type), field('Lag (working days)', lag)),
+      field('Type', type),
+      h('div', { class: 'field-grid' }, field('Lag', lag), field('Counted in', lagUnit)),
       plain,
     ],
     footer: [
