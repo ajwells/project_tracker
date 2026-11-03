@@ -8,7 +8,7 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "test": "node --test test/",
-    "test:browser": "node --test browser-tests/editing.test.js browser-tests/scheduling.test.js browser-tests/layout.test.js browser-tests/phone.test.js browser-tests/storage.test.js"
+    "test:browser": "node --test --test-force-exit --test-timeout=300000 browser-tests/helpers.test.js browser-tests/editing.test.js browser-tests/scheduling.test.js browser-tests/layout.test.js browser-tests/phone.test.js browser-tests/storage.test.js"
   },
   "engines": {
     "node": ">=20"

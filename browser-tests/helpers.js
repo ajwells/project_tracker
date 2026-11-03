@@ -62,43 +62,59 @@ export function tempFolder() {
   return { folder, remove: () => rmSync(folder, { recursive: true, force: true, maxRetries: 3 }) };
 }
 
-function freePort() {
+// The system hands out ports from 49152 on Windows and 32768 on Linux, so while a server
+// restarts it could give that server's port to another test's. A steady port stays below
+// those ranges, where this can't happen.
+function freePort(steady) {
   return new Promise((done, fail) => {
     const probe = createServer();
     probe.on('error', fail);
-    probe.listen(0, () => {
+    probe.listen(steady ? 20000 + Math.floor(Math.random() * 12000) : 0, '0.0.0.0', () => {
       const { port } = probe.address();
       probe.close(() => done(port));
     });
   });
 }
 
+// Whatever a test leaves running ends with the test process.
+const running = new Set();
+process.on('exit', () => {
+  for (const child of running) child.kill();
+});
+
 // Runs index.js exactly as `npm start` does, on its own port and data file. Servers
-// starting side by side can pick the same free port, so a clash just tries another.
+// starting side by side can pick the same free port, so a clash just tries another. A
+// server given its port waits a moment instead, in case that port is still coming free.
+// Pass steadyPort for a server that will restart on the port it gets.
 export async function startServer(options = {}) {
   for (let attempt = 1; ; attempt++) {
     try {
       return await launchServer(options);
     } catch (error) {
-      if (options.port || attempt === 5 || !/already in use/.test(error.message)) throw error;
+      if (attempt === 5 || !/already in use/.test(error.message)) throw error;
+      if (options.port) await pause(400);
     }
   }
 }
 
-async function launchServer({ dataFile, saving, port, firmLeads }) {
-  const usedPort = port ?? await freePort();
+async function launchServer({ dataFile, saving, port, firmLeads, steadyPort }) {
+  const usedPort = port ?? await freePort(steadyPort);
   const env = { ...process.env, PORT: String(usedPort), DATA_FILE: dataFile, APP_PASSWORD: '' };
   delete env.SAVE_DATA;
   if (saving !== undefined) env.SAVE_DATA = String(saving);
   delete env.FIRM_LEADS;
   if (firmLeads !== undefined) env.FIRM_LEADS = String(firmLeads);
   const child = spawn(process.execPath, ['index.js'], { cwd: ROOT, env });
+  running.add(child);
+  child.once('exit', () => running.delete(child));
+  // A killed process reports a signal instead of an exit code, on Windows too.
+  const exited = () => child.exitCode !== null || child.signalCode !== null;
   const server = {
     port: usedPort,
     url: `http://localhost:${usedPort}`,
     output: '',
     stop: () => new Promise((done) => {
-      if (child.exitCode !== null) done();
+      if (exited()) done();
       else {
         child.once('exit', () => done());
         child.kill();
@@ -110,7 +126,7 @@ async function launchServer({ dataFile, saving, port, firmLeads }) {
   // Only this server's own message counts: another test's could answer on a clashing port.
   const deadline = Date.now() + 15000;
   while (!/is running/.test(server.output)) {
-    if (/already in use/.test(server.output) || child.exitCode !== null) {
+    if (/already in use/.test(server.output) || exited()) {
       await server.stop();
       throw new Error(`The server stopped: ${server.output}`);
     }

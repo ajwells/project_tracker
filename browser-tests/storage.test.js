@@ -28,7 +28,7 @@ function restartableServer() {
     restart: async (options) => {
       const port = holder.current?.port;
       await holder.current?.stop();
-      holder.current = await startServer({ port, ...options });
+      holder.current = await startServer({ port, steadyPort: true, ...options });
     },
   };
   return holder;
