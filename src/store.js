@@ -8,8 +8,8 @@ export { COLORS, DEP_TYPES, EXPORT_FORMAT, HttpError, SCHEMA_VERSION, STATUSES }
 
 export class Store extends StoreCore {
   // With saving off, the file is still read at startup but never written.
-  constructor(filePath, { saving = true } = {}) {
-    super({ saving });
+  constructor(filePath, { saving = true, firmLeads = true } = {}) {
+    super({ saving, firmLeads });
     this.filePath = filePath;
     if (existsSync(filePath)) {
       this.state = JSON.parse(readFileSync(filePath, 'utf8'));

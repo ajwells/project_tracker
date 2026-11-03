@@ -129,6 +129,7 @@ export function renderGanttView(view, project) {
     showCritical,
     showBaseline,
     today: ctx.data.today,
+    selectedTask: ctx.taskId, // on screen only: exports draw their own charts
   });
   mountGantt(scroller, layout, pal);
   scroller.addEventListener('firstshow', () => {
@@ -253,7 +254,9 @@ function mountGantt(scroller, layout, pal) {
         dragged = false;
       }, 0);
       if (!delta) return;
+      // Moving a task tracked by dates moves both of them.
       const patch = resize ? { end: fromN(toN(c.end) + delta) } : { start: fromN(toN(c.start) + delta) };
+      if (!resize && info.task.trackBy === 'dates') patch.end = fromN(toN(c.end) + delta);
       await api('PATCH', `/api/tasks/${info.task.id}`, patch);
     };
     const cancel = () => {
@@ -307,7 +310,7 @@ export function renderTimelineView(view, project) {
   view.append(toolbar, card);
   const width = Math.max(card.clientWidth - 10, 760);
   const layout = layoutTimeline({
-    groups, pal, text: makeText(SCREEN_FONT), width, today: ctx.data.today, legend: !project,
+    groups, pal, text: makeText(SCREEN_FONT), width, today: ctx.data.today, legend: !project, selectedTask: ctx.taskId,
   });
   const svg = renderSvg(layout.primitives, { width: layout.width, height: layout.height, background: pal.surface, label: 'Timeline' });
   svg.style.maxWidth = 'none';

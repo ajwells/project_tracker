@@ -3,13 +3,14 @@
 // graph has no loops and the change can be stored, so a rejected edit leaves
 // nothing behind. Subclasses decide where the data is kept.
 
-import { computeSchedule, isValidDate, makeCalendar, toDayNumber, toIso } from './scheduler.js';
+import { computeSchedule, datesDuration, isValidDate, makeCalendar, toDayNumber, toIso, tracksDates } from './scheduler.js';
 
 export const EXPORT_FORMAT = 'project-tracker-export';
 export const SCHEMA_VERSION = 1;
 
 export const STATUSES = ['not_started', 'in_progress', 'blocked', 'complete'];
 export const DEP_TYPES = ['FS', 'SS', 'FF', 'SF'];
+export const TRACK_BY = ['duration', 'dates'];
 export const COLORS = ['blue', 'orange', 'aqua', 'yellow', 'magenta', 'green', 'violet', 'red'];
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_DURATION = 3650;
@@ -66,6 +67,22 @@ function cleanDeps(value) {
   return deps;
 }
 
+function cleanTrackBy(value) {
+  if (!TRACK_BY.includes(value)) throw bad('A task is tracked by duration or by dates.');
+  return value;
+}
+
+const MILESTONE_DATES = "A milestone has one date, so it can't be tracked by dates.";
+
+function trackByDates(task, start, finish, cal) {
+  if (finish < start) throw bad('Finish cannot be before the start.');
+  task.trackBy = 'dates';
+  task.start = start;
+  task.finish = finish;
+  task.startSet = true;
+  task.duration = Math.min(MAX_DURATION, datesDuration(task, cal));
+}
+
 function cleanCalendar(value) {
   if (!value || typeof value !== 'object') return { workWeekends: false, holidays: [] };
   const holidays = Array.isArray(value.holidays) ? value.holidays : [];
@@ -84,7 +101,10 @@ function cleanCalendar(value) {
 const FIELD_LABELS = {
   name: 'Name',
   notes: 'Notes',
-  start: 'Requested start',
+  trackBy: 'Tracked by',
+  startRule: 'Start date',
+  start: 'Start',
+  finish: 'Finish',
   duration: 'Duration',
   status: 'Status',
   progress: 'Progress',
@@ -101,8 +121,9 @@ export const emptyState = () => ({ schemaVersion: SCHEMA_VERSION, revision: 0, p
 
 export class StoreCore {
   // `saving` says whether the server keeps the data, which the app reports to its users.
-  constructor({ saving = true } = {}) {
+  constructor({ saving = true, firmLeads = true } = {}) {
     this.saving = saving;
+    this.firmLeads = firmLeads;
     this.serverId = newId();
     this.listeners = new Set();
     this.state = emptyState();
@@ -117,11 +138,12 @@ export class StoreCore {
   // ---- reads --------------------------------------------------------------
 
   snapshot() {
-    const schedule = computeSchedule(this.state.projects, todayIso());
+    const schedule = this.#schedule(this.state.projects);
     return {
       revision: this.state.revision,
       serverId: this.serverId,
       saving: this.saving,
+      firmLeads: this.firmLeads,
       today: todayIso(),
       crossLinks: schedule.crossLinks,
       projects: this.state.projects.map((project) => ({
@@ -201,7 +223,7 @@ export class StoreCore {
         project.baseline = null;
         return id;
       }
-      const schedule = computeSchedule(draft.projects, todayIso());
+      const schedule = this.#schedule(draft.projects);
       project.baseline = {
         at: new Date().toISOString(),
         tasks: Object.fromEntries(
@@ -227,6 +249,9 @@ export class StoreCore {
         notes: '',
         parentId: null,
         start: todayIso(),
+        startSet: input.start !== undefined,
+        trackBy: 'duration',
+        finish: null,
         duration: 5,
         milestone: false,
         manual: false,
@@ -250,6 +275,12 @@ export class StoreCore {
       applyFields(task, input);
       normalizeStatus(task, input, 'not_started');
       if (input.milestone) task.duration = 0;
+      if (input.trackBy !== undefined && cleanTrackBy(input.trackBy) === 'dates') {
+        if (task.milestone) throw bad(MILESTONE_DATES);
+        const cal = makeCalendar(project.calendar);
+        const end = input.end === undefined ? toIso(cal.add(cal.next(toDayNumber(task.start)), Math.max(1, task.duration) - 1)) : cleanDate(input.end, 'Finish');
+        trackByDates(task, task.start, end, cal);
+      }
       assertDepsExist(draft, task);
       project.tasks.push(task);
       project.updatedAt = new Date().toISOString();
@@ -268,16 +299,37 @@ export class StoreCore {
       const patch = { ...input };
       if (isSummary) {
         // Summary dates, status and progress roll up from their subtasks.
-        for (const field of ['start', 'duration', 'end', 'status', 'progress', 'milestone', 'manual']) delete patch[field];
+        for (const field of ['start', 'duration', 'end', 'status', 'progress', 'milestone', 'manual', 'trackBy', 'startSet']) delete patch[field];
       }
       if (patch.milestone && project.tasks.some((t) => t.parentId === task.id)) {
         throw bad('A task with subtasks cannot become a milestone.');
       }
+      const cal = makeCalendar(project.calendar);
+      const wantsDates = patch.trackBy === undefined ? task.trackBy === 'dates' : cleanTrackBy(patch.trackBy) === 'dates';
+      const willBeMilestone = patch.milestone ?? task.milestone;
+      if (patch.trackBy === 'dates' && willBeMilestone) throw bad(MILESTONE_DATES);
+      if (wantsDates && patch.duration !== undefined && !willBeMilestone) {
+        throw bad('This task is tracked by dates, so its duration fills in. Change its dates, or track it by duration.');
+      }
+      // Where the task sits now, for anything about to hold it in place.
+      const here = { start: task.schedStart ?? task.start, end: task.schedEnd ?? task.finish ?? task.start };
+      if (patch.manual === true && !task.manual && patch.start === undefined) task.start = here.start;
       applyFields(task, patch);
-      if (patch.end !== undefined) {
+      if (patch.start !== undefined || patch.manual === true) task.startSet = true;
+      if (patch.startSet === false) task.startSet = false;
+      if (wantsDates && !willBeMilestone) {
+        const start = patch.start ?? (task.trackBy === 'dates' ? task.start : here.start);
+        const finish = patch.end === undefined ? task.finish ?? here.end : cleanDate(patch.end, 'Finish');
+        trackByDates(task, start, finish, cal);
+      } else if (task.trackBy === 'dates') {
+        // Leaving dates: the current span is already the duration, and dates fill in again.
+        task.trackBy = 'duration';
+        task.finish = null;
+        if (patch.start === undefined) task.startSet = false;
+      }
+      if (patch.end !== undefined && !wantsDates) {
         const end = cleanDate(patch.end, 'Finish');
-        const cal = makeCalendar(project.calendar);
-        const schedule = computeSchedule(draft.projects, todayIso());
+        const schedule = this.#schedule(draft.projects);
         if (schedule.cycle) throw cycleError(draft, schedule.cycle);
         const start = toDayNumber(schedule.tasks.get(task.id).start);
         if (toDayNumber(end) < start) throw bad('Finish cannot be before the scheduled start.');
@@ -425,6 +477,10 @@ export class StoreCore {
 
   // ---- internals ----------------------------------------------------------
 
+  #schedule(projects) {
+    return computeSchedule(projects, todayIso(), { firmLeads: this.firmLeads });
+  }
+
   subscribe(listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -433,7 +489,7 @@ export class StoreCore {
   #transact(mutate, { actor = 'System', cause = null, skipScheduleFor = null, skipHistory = false } = {}) {
     const draft = structuredClone(this.state);
     const result = mutate(draft);
-    const schedule = computeSchedule(draft.projects, todayIso());
+    const schedule = this.#schedule(draft.projects);
     if (schedule.cycle) throw cycleError(draft, schedule.cycle);
 
     let causeLabel = cause;
@@ -460,6 +516,11 @@ export class StoreCore {
         }
         task.schedStart = c.start;
         task.schedEnd = c.end;
+        if (c.isSummary) continue;
+        // A calendar change can alter what a pair of dates spans.
+        if (tracksDates(task)) task.duration = c.duration;
+        // So a task keeps its place if its links are later removed.
+        if (task.startSet === false) task.start = c.start;
       }
     }
     draft.revision = this.state.revision + 1;
@@ -571,7 +632,10 @@ function historyView(draft, task) {
   return {
     name: task.name,
     notes: task.notes,
+    trackBy: task.trackBy === 'dates' ? 'Dates' : 'Duration',
+    startRule: task.startSet === false ? 'Follows links' : 'Set by hand',
     start: task.start,
+    finish: task.trackBy === 'dates' ? task.finish : '',
     duration: task.milestone ? 0 : task.duration,
     status: task.status,
     progress: task.progress,
@@ -653,12 +717,18 @@ function parseImportedTask(raw, where, taskIds) {
   taskIds.add(raw.id);
   if (!STATUSES.includes(raw.status ?? 'not_started')) throw bad(`${where} has an unknown status.`);
   const milestone = !!raw.milestone;
+  const trackBy = milestone ? 'duration' : cleanTrackBy(raw.trackBy ?? 'duration');
+  const finish = trackBy === 'dates' ? cleanDate(raw.finish, `${where} finish`) : null;
+  if (finish && finish < raw.start) throw bad(`${where} finishes before it starts.`);
   return {
     id: raw.id,
     name: cleanString(raw.name, `${where} name`, { required: true }),
     notes: cleanString(raw.notes, `${where} notes`, { max: 10000 }),
     parentId: ID_RE.test(raw.parentId) ? raw.parentId : null,
     start: cleanDate(raw.start, `${where} start`),
+    startSet: trackBy === 'dates' || raw.startSet !== false,
+    trackBy,
+    finish,
     duration: milestone ? 0 : cleanInt(raw.duration ?? 1, `${where} duration`, 0, MAX_DURATION),
     milestone,
     manual: !!raw.manual,

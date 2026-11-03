@@ -1,0 +1,1802 @@
+{
+  "format": "project-tracker-export",
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-03T00:24:34.142Z",
+  "projects": [
+    {
+      "id": "43f1cf934002c397",
+      "name": "test",
+      "description": "",
+      "owner": "",
+      "color": "orange",
+      "calendar": {
+        "workWeekends": false,
+        "holidays": []
+      },
+      "baseline": null,
+      "createdAt": "2026-11-02T23:19:10.338Z",
+      "updatedAt": "2026-11-03T00:24:07.279Z",
+      "tasks": [
+        {
+          "id": "69e215964a2a7d7e",
+          "name": "test overall",
+          "notes": "",
+          "parentId": null,
+          "start": "2026-11-02",
+          "startSet": false,
+          "trackBy": "duration",
+          "finish": null,
+          "duration": 5,
+          "milestone": false,
+          "manual": false,
+          "onTimeline": false,
+          "status": "not_started",
+          "progress": 0,
+          "pocName": "",
+          "pocContact": "",
+          "deps": [],
+          "schedStart": "2026-12-28",
+          "schedEnd": "2027-02-12",
+          "history": [
+            {
+              "id": "e59499870249cadb",
+              "at": "2026-11-02T23:25:27.036Z",
+              "type": "create",
+              "author": "Aaron",
+              "note": "Task created"
+            }
+          ]
+        },
+        {
+          "id": "7d822d2cdf9402f0",
+          "name": "test1",
+          "notes": "",
+          "parentId": "69e215964a2a7d7e",
+          "start": "2027-02-09",
+          "startSet": true,
+          "trackBy": "duration",
+          "finish": null,
+          "duration": 4,
+          "milestone": false,
+          "manual": false,
+          "onTimeline": true,
+          "status": "not_started",
+          "progress": 0,
+          "pocName": "",
+          "pocContact": "",
+          "deps": [],
+          "schedStart": "2027-02-09",
+          "schedEnd": "2027-02-12",
+          "history": [
+            {
+              "id": "9b06e5cba908bc4e",
+              "at": "2026-11-02T23:19:18.461Z",
+              "type": "create",
+              "author": "Aaron",
+              "note": "Task created"
+            },
+            {
+              "id": "446f3b2abac41c4b",
+              "at": "2026-11-02T23:19:35.489Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Duration",
+                  "to": "Dates"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Follows links",
+                  "to": "Set by hand"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "",
+                  "to": "2026-11-06"
+                }
+              ]
+            },
+            {
+              "id": "053cfd54451b5f1b",
+              "at": "2026-11-02T23:19:39.583Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Dates",
+                  "to": "Duration"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Set by hand",
+                  "to": "Follows links"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "2026-11-06",
+                  "to": ""
+                }
+              ]
+            },
+            {
+              "id": "e26e7a3ccc6c85f5",
+              "at": "2026-11-02T23:19:53.337Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Duration",
+                  "to": "Dates"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Follows links",
+                  "to": "Set by hand"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "",
+                  "to": "2026-11-06"
+                }
+              ]
+            },
+            {
+              "id": "34c0f6f7573b843b",
+              "at": "2026-11-02T23:19:58.012Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Dates",
+                  "to": "Duration"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Set by hand",
+                  "to": "Follows links"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "2026-11-06",
+                  "to": ""
+                },
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 5,
+                  "to": 0
+                },
+                {
+                  "field": "milestone",
+                  "label": "Milestone",
+                  "from": false,
+                  "to": true
+                }
+              ]
+            },
+            {
+              "id": "6b5958225689d02d",
+              "at": "2026-11-02T23:19:58.012Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-11-06",
+                  "to": "2026-11-02"
+                }
+              ]
+            },
+            {
+              "id": "153d176abf59e55c",
+              "at": "2026-11-02T23:20:00.532Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 0,
+                  "to": 1
+                },
+                {
+                  "field": "milestone",
+                  "label": "Milestone",
+                  "from": true,
+                  "to": false
+                }
+              ]
+            },
+            {
+              "id": "2297e8ab27ed5233",
+              "at": "2026-11-02T23:20:05.931Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Duration",
+                  "to": "Dates"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Follows links",
+                  "to": "Set by hand"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "",
+                  "to": "2026-11-02"
+                }
+              ]
+            },
+            {
+              "id": "7f1e1b8d74aa8372",
+              "at": "2026-11-02T23:20:19.132Z",
+              "type": "update",
+              "author": "Aaron",
+              "note": "test"
+            },
+            {
+              "id": "097fa531cb2d8cfb",
+              "at": "2026-11-02T23:20:25.433Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "onTimeline",
+                  "label": "Shown on timeline",
+                  "from": false,
+                  "to": true
+                }
+              ]
+            },
+            {
+              "id": "a037f0f4b016a1d8",
+              "at": "2026-11-02T23:20:27.297Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "onTimeline",
+                  "label": "Shown on timeline",
+                  "from": true,
+                  "to": false
+                }
+              ]
+            },
+            {
+              "id": "642bab62247df1be",
+              "at": "2026-11-02T23:20:32.600Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Dates",
+                  "to": "Duration"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Set by hand",
+                  "to": "Follows links"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "2026-11-02",
+                  "to": ""
+                },
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 1,
+                  "to": 0
+                },
+                {
+                  "field": "milestone",
+                  "label": "Milestone",
+                  "from": false,
+                  "to": true
+                }
+              ]
+            },
+            {
+              "id": "5fcc8fdd52a375d4",
+              "at": "2026-11-02T23:20:33.411Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 0,
+                  "to": 1
+                },
+                {
+                  "field": "milestone",
+                  "label": "Milestone",
+                  "from": true,
+                  "to": false
+                }
+              ]
+            },
+            {
+              "id": "bd03609a656ce9d5",
+              "at": "2026-11-02T23:21:01.760Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 1,
+                  "to": 3
+                }
+              ]
+            },
+            {
+              "id": "7af5e25a6b09f5f5",
+              "at": "2026-11-02T23:24:42.567Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Duration",
+                  "to": "Dates"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Follows links",
+                  "to": "Set by hand"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "",
+                  "to": "2026-11-04"
+                }
+              ]
+            },
+            {
+              "id": "73d8b9d0da1ba262",
+              "at": "2026-11-02T23:24:49.461Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Dates",
+                  "to": "Duration"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Set by hand",
+                  "to": "Follows links"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "2026-11-04",
+                  "to": ""
+                }
+              ]
+            },
+            {
+              "id": "a62250abd31f589d",
+              "at": "2026-11-02T23:24:52.322Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Duration",
+                  "to": "Dates"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Follows links",
+                  "to": "Set by hand"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "",
+                  "to": "2026-11-04"
+                }
+              ]
+            },
+            {
+              "id": "0e839013cac27bc7",
+              "at": "2026-11-02T23:24:58.055Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Dates",
+                  "to": "Duration"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Set by hand",
+                  "to": "Follows links"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "2026-11-04",
+                  "to": ""
+                }
+              ]
+            },
+            {
+              "id": "5759ce39865c9aff",
+              "at": "2026-11-02T23:25:05.822Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Duration",
+                  "to": "Dates"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Follows links",
+                  "to": "Set by hand"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "",
+                  "to": "2026-11-04"
+                }
+              ]
+            },
+            {
+              "id": "a6e009324bd24975",
+              "at": "2026-11-02T23:25:34.111Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "parent",
+                  "label": "Parent task",
+                  "from": "",
+                  "to": "test overall"
+                }
+              ]
+            },
+            {
+              "id": "5ab582c2af441400",
+              "at": "2026-11-02T23:26:12.173Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Dates",
+                  "to": "Duration"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Set by hand",
+                  "to": "Follows links"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "2026-11-04",
+                  "to": ""
+                }
+              ]
+            },
+            {
+              "id": "2ed34872faef94e2",
+              "at": "2026-11-02T23:26:17.034Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 3,
+                  "to": 4
+                }
+              ]
+            },
+            {
+              "id": "715fe3fda5ad32e9",
+              "at": "2026-11-02T23:26:33.014Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "onTimeline",
+                  "label": "Shown on timeline",
+                  "from": false,
+                  "to": true
+                }
+              ]
+            },
+            {
+              "id": "62f41672c19886a6",
+              "at": "2026-11-02T23:28:21.913Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Follows links",
+                  "to": "Set by hand"
+                },
+                {
+                  "field": "start",
+                  "label": "Start",
+                  "from": "2026-11-02",
+                  "to": "2027-01-13"
+                }
+              ]
+            },
+            {
+              "id": "68009688aaccf0be",
+              "at": "2026-11-02T23:30:54.280Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "",
+                  "to": "test3 (FS)"
+                }
+              ]
+            },
+            {
+              "id": "9445f2ab2acdff70",
+              "at": "2026-11-02T23:30:54.281Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2027-01-13",
+                  "to": "2027-01-26"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-01-18",
+                  "to": "2027-01-29"
+                }
+              ]
+            },
+            {
+              "id": "05694b69d39dd6ac",
+              "at": "2026-11-02T23:37:51.980Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test3 (FS)",
+                  "to": ""
+                }
+              ]
+            },
+            {
+              "id": "deee88dbdf96b830",
+              "at": "2026-11-02T23:37:51.980Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2027-01-26",
+                  "to": "2027-01-13"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-01-29",
+                  "to": "2027-01-18"
+                }
+              ]
+            },
+            {
+              "id": "fdf5743a72f84cea",
+              "at": "2026-11-02T23:38:19.699Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "",
+                  "to": "test3 (FS)"
+                }
+              ]
+            },
+            {
+              "id": "02645492b68bdf67",
+              "at": "2026-11-02T23:38:19.699Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2027-01-13",
+                  "to": "2027-01-26"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-01-18",
+                  "to": "2027-01-29"
+                }
+              ]
+            },
+            {
+              "id": "59ae6de8849402c7",
+              "at": "2026-11-02T23:38:23.326Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test3 (FS)",
+                  "to": "test3 (FS-10d)"
+                }
+              ]
+            },
+            {
+              "id": "2b3d2da7c83572ed",
+              "at": "2026-11-02T23:38:23.326Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2027-01-26",
+                  "to": "2027-01-13"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-01-29",
+                  "to": "2027-01-18"
+                }
+              ]
+            },
+            {
+              "id": "a3972d3db7700a79",
+              "at": "2026-11-02T23:38:33.176Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test3 (FS-10d)",
+                  "to": "test3 (FS+10d)"
+                }
+              ]
+            },
+            {
+              "id": "088035ed92b3b303",
+              "at": "2026-11-02T23:38:33.176Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2027-01-13",
+                  "to": "2027-02-09"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-01-18",
+                  "to": "2027-02-12"
+                }
+              ]
+            },
+            {
+              "id": "a7dc5c6af3aba74a",
+              "at": "2026-11-03T00:23:22.922Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "start",
+                  "label": "Start",
+                  "from": "2027-01-13",
+                  "to": "2027-02-08"
+                }
+              ]
+            },
+            {
+              "id": "858d03ea79f0d253",
+              "at": "2026-11-03T00:23:26.770Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "start",
+                  "label": "Start",
+                  "from": "2027-02-08",
+                  "to": "2027-02-07"
+                }
+              ]
+            },
+            {
+              "id": "368cda6c2d38369e",
+              "at": "2026-11-03T00:23:45.119Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test3 (FS+10d)",
+                  "to": ""
+                }
+              ]
+            },
+            {
+              "id": "b876f3a5fd76eb68",
+              "at": "2026-11-03T00:23:45.119Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2027-02-09",
+                  "to": "2027-02-08"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-02-12",
+                  "to": "2027-02-11"
+                }
+              ]
+            },
+            {
+              "id": "55fbba6ebdb1f881",
+              "at": "2026-11-03T00:23:58.975Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "start",
+                  "label": "Start",
+                  "from": "2027-02-07",
+                  "to": "2027-02-09"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "269e5e9cd3644e3e",
+          "name": "test2",
+          "notes": "",
+          "parentId": "69e215964a2a7d7e",
+          "start": "2026-12-28",
+          "startSet": false,
+          "trackBy": "duration",
+          "finish": null,
+          "duration": 1,
+          "milestone": false,
+          "manual": false,
+          "onTimeline": true,
+          "status": "not_started",
+          "progress": 0,
+          "pocName": "",
+          "pocContact": "",
+          "deps": [
+            {
+              "taskId": "7d822d2cdf9402f0",
+              "type": "SF",
+              "lag": -30
+            }
+          ],
+          "schedStart": "2026-12-28",
+          "schedEnd": "2026-12-28",
+          "history": [
+            {
+              "id": "fe9524efc31f2552",
+              "at": "2026-11-02T23:26:22.556Z",
+              "type": "create",
+              "author": "Aaron",
+              "note": "Task created"
+            },
+            {
+              "id": "7b780c9f6b9c4d34",
+              "at": "2026-11-02T23:26:25.755Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "parent",
+                  "label": "Parent task",
+                  "from": "",
+                  "to": "test overall"
+                }
+              ]
+            },
+            {
+              "id": "bb9efe4a7afe8806",
+              "at": "2026-11-02T23:26:31.021Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "onTimeline",
+                  "label": "Shown on timeline",
+                  "from": false,
+                  "to": true
+                }
+              ]
+            },
+            {
+              "id": "10ab9bbebe35b70c",
+              "at": "2026-11-02T23:26:49.226Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "",
+                  "to": "test1 (FS)"
+                }
+              ]
+            },
+            {
+              "id": "217fe994675bd338",
+              "at": "2026-11-02T23:26:49.227Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-11-02",
+                  "to": "2026-11-06"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-11-06",
+                  "to": "2026-11-12"
+                }
+              ]
+            },
+            {
+              "id": "3baf1ad147f2ed20",
+              "at": "2026-11-02T23:26:52.773Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (FS)",
+                  "to": "test1 (SS)"
+                }
+              ]
+            },
+            {
+              "id": "a92f6e9bf2675c50",
+              "at": "2026-11-02T23:26:52.773Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-11-06",
+                  "to": "2026-11-02"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-11-12",
+                  "to": "2026-11-06"
+                }
+              ]
+            },
+            {
+              "id": "4754c4804c0f9a71",
+              "at": "2026-11-02T23:26:57.091Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (SS)",
+                  "to": "test1 (FS-30d)"
+                }
+              ]
+            },
+            {
+              "id": "a65d7726e3e5106c",
+              "at": "2026-11-02T23:26:57.091Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-11-02",
+                  "to": "2026-09-25"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-11-06",
+                  "to": "2026-10-01"
+                }
+              ]
+            },
+            {
+              "id": "975ec9fa2d8987a1",
+              "at": "2026-11-02T23:27:18.309Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (FS-30d)",
+                  "to": "test1 (SS-30d)"
+                }
+              ]
+            },
+            {
+              "id": "a8f2e8f86ce8fca0",
+              "at": "2026-11-02T23:27:18.309Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-09-25",
+                  "to": "2026-09-21"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-10-01",
+                  "to": "2026-09-25"
+                }
+              ]
+            },
+            {
+              "id": "27994b57d6ea0f99",
+              "at": "2026-11-02T23:27:28.489Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (SS-30d)",
+                  "to": "test1 (SS-27d)"
+                }
+              ]
+            },
+            {
+              "id": "b44a7d635617285d",
+              "at": "2026-11-02T23:27:28.489Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-09-21",
+                  "to": "2026-09-24"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-09-25",
+                  "to": "2026-09-30"
+                }
+              ]
+            },
+            {
+              "id": "323afebbca4808bb",
+              "at": "2026-11-02T23:27:30.687Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (SS-27d)",
+                  "to": "test1 (SS+3d)"
+                }
+              ]
+            },
+            {
+              "id": "f597c8dd2110cd58",
+              "at": "2026-11-02T23:27:30.688Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-09-24",
+                  "to": "2026-11-05"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-09-30",
+                  "to": "2026-11-11"
+                }
+              ]
+            },
+            {
+              "id": "06cd23c4d7834452",
+              "at": "2026-11-02T23:27:35.254Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (SS+3d)",
+                  "to": "test1 (SS-30d)"
+                }
+              ]
+            },
+            {
+              "id": "440f743aeedcc8b1",
+              "at": "2026-11-02T23:27:35.254Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-11-05",
+                  "to": "2026-09-21"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-11-11",
+                  "to": "2026-09-25"
+                }
+              ]
+            },
+            {
+              "id": "0e635f26cb9bdd61",
+              "at": "2026-11-02T23:28:21.913Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-09-21",
+                  "to": "2026-12-02"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-09-25",
+                  "to": "2026-12-08"
+                }
+              ]
+            },
+            {
+              "id": "d289bd5e69629b77",
+              "at": "2026-11-02T23:30:54.281Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-12-02",
+                  "to": "2026-12-15"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-12-08",
+                  "to": "2026-12-21"
+                }
+              ]
+            },
+            {
+              "id": "b956f7b0a8fa2324",
+              "at": "2026-11-02T23:31:11.504Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 5,
+                  "to": 30
+                }
+              ]
+            },
+            {
+              "id": "44b89b5ab53ec991",
+              "at": "2026-11-02T23:36:49.381Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 30,
+                  "to": 20
+                }
+              ]
+            },
+            {
+              "id": "606a2baac5584fda",
+              "at": "2026-11-02T23:36:53.126Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Duration",
+                  "to": "Dates"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Follows links",
+                  "to": "Set by hand"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "",
+                  "to": "2027-01-11"
+                }
+              ]
+            },
+            {
+              "id": "05bc6b31d70e0e16",
+              "at": "2026-11-02T23:36:55.758Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Dates",
+                  "to": "Duration"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Set by hand",
+                  "to": "Follows links"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "2027-01-11",
+                  "to": ""
+                }
+              ]
+            },
+            {
+              "id": "4eacda7c80f2639e",
+              "at": "2026-11-02T23:36:57.920Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Duration",
+                  "to": "Dates"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Follows links",
+                  "to": "Set by hand"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "",
+                  "to": "2027-01-11"
+                }
+              ]
+            },
+            {
+              "id": "be751fb7ae470161",
+              "at": "2026-11-02T23:37:01.417Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "start",
+                  "label": "Start",
+                  "from": "2026-12-15",
+                  "to": "2026-12-17"
+                },
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 20,
+                  "to": 18
+                }
+              ]
+            },
+            {
+              "id": "e3ca842306f93c07",
+              "at": "2026-11-02T23:37:03.411Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "2027-01-11",
+                  "to": "2027-01-13"
+                },
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 18,
+                  "to": 20
+                }
+              ]
+            },
+            {
+              "id": "2949a3807ac06191",
+              "at": "2026-11-02T23:37:16.467Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (SS-30d)",
+                  "to": "test1 (FS-30d)"
+                }
+              ]
+            },
+            {
+              "id": "c7990b41de57fe7c",
+              "at": "2026-11-02T23:37:27.919Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (FS-30d)",
+                  "to": "test1 (SF-30d)"
+                }
+              ]
+            },
+            {
+              "id": "021175480d57f766",
+              "at": "2026-11-03T00:12:00.420Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "trackBy",
+                  "label": "Tracked by",
+                  "from": "Dates",
+                  "to": "Duration"
+                },
+                {
+                  "field": "startRule",
+                  "label": "Start date",
+                  "from": "Set by hand",
+                  "to": "Follows links"
+                },
+                {
+                  "field": "finish",
+                  "label": "Finish",
+                  "from": "2027-01-13",
+                  "to": ""
+                }
+              ]
+            },
+            {
+              "id": "1f6b6f7087c56797",
+              "at": "2026-11-03T00:12:00.420Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-12-17",
+                  "to": "2026-12-01"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-01-13",
+                  "to": "2026-12-28"
+                }
+              ]
+            },
+            {
+              "id": "b7ff17c056cf525b",
+              "at": "2026-11-03T00:12:08.331Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 20,
+                  "to": 30
+                }
+              ]
+            },
+            {
+              "id": "ca1b7c93ad274e39",
+              "at": "2026-11-03T00:12:34.106Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (SF-30d)",
+                  "to": "test1 (SS-30d)"
+                }
+              ]
+            },
+            {
+              "id": "cbf3a48381a7d1d4",
+              "at": "2026-11-03T00:12:34.106Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-11-17",
+                  "to": "2026-12-29"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-12-28",
+                  "to": "2027-02-08"
+                }
+              ]
+            },
+            {
+              "id": "167b8fa628b1ab68",
+              "at": "2026-11-03T00:13:06.672Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (SS-30d)",
+                  "to": ""
+                }
+              ]
+            },
+            {
+              "id": "5075fbb8707c0a28",
+              "at": "2026-11-03T00:13:17.478Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "",
+                  "to": "test1 (FS)"
+                }
+              ]
+            },
+            {
+              "id": "5abeba06044cf532",
+              "at": "2026-11-03T00:13:17.478Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-12-29",
+                  "to": "2027-02-15"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-02-08",
+                  "to": "2027-03-26"
+                }
+              ]
+            },
+            {
+              "id": "a1f9f89135ccc9c0",
+              "at": "2026-11-03T00:13:20.805Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (FS)",
+                  "to": "test1 (SS)"
+                }
+              ]
+            },
+            {
+              "id": "9bfc465546a3820a",
+              "at": "2026-11-03T00:13:20.805Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2027-02-15",
+                  "to": "2027-02-09"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-03-26",
+                  "to": "2027-03-22"
+                }
+              ]
+            },
+            {
+              "id": "65e469241dec4fac",
+              "at": "2026-11-03T00:13:24.970Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (SS)",
+                  "to": "test1 (SS-30d)"
+                }
+              ]
+            },
+            {
+              "id": "8f30eecee4c5f613",
+              "at": "2026-11-03T00:13:24.970Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2027-02-09",
+                  "to": "2026-12-29"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-03-22",
+                  "to": "2027-02-08"
+                }
+              ]
+            },
+            {
+              "id": "a16f8932e08de554",
+              "at": "2026-11-03T00:22:40.107Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (SS-30d)",
+                  "to": "test1 (SF-30d)"
+                }
+              ]
+            },
+            {
+              "id": "2990b7987dae86cd",
+              "at": "2026-11-03T00:22:40.107Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-12-29",
+                  "to": "2026-11-17"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2027-02-08",
+                  "to": "2026-12-28"
+                }
+              ]
+            },
+            {
+              "id": "88a9c0c545bebb58",
+              "at": "2026-11-03T00:23:02.587Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 30,
+                  "to": 0
+                },
+                {
+                  "field": "milestone",
+                  "label": "Milestone",
+                  "from": false,
+                  "to": true
+                }
+              ]
+            },
+            {
+              "id": "f7def616bd909e2b",
+              "at": "2026-11-03T00:23:02.587Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test2\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-11-17",
+                  "to": "2026-12-28"
+                }
+              ]
+            },
+            {
+              "id": "6844f752ecfd93f7",
+              "at": "2026-11-03T00:23:45.119Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-12-28",
+                  "to": "2026-12-25"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-12-28",
+                  "to": "2026-12-25"
+                }
+              ]
+            },
+            {
+              "id": "f52a896e9fd51e75",
+              "at": "2026-11-03T00:23:58.975Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test1\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-12-25",
+                  "to": "2026-12-28"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-12-25",
+                  "to": "2026-12-28"
+                }
+              ]
+            },
+            {
+              "id": "f641d476f7af70d3",
+              "at": "2026-11-03T00:24:07.279Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "duration",
+                  "label": "Duration",
+                  "from": 0,
+                  "to": 1
+                },
+                {
+                  "field": "milestone",
+                  "label": "Milestone",
+                  "from": true,
+                  "to": false
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "51b1d66e56a05585",
+          "name": "test3",
+          "notes": "",
+          "parentId": "69e215964a2a7d7e",
+          "start": "2027-01-19",
+          "startSet": false,
+          "trackBy": "duration",
+          "finish": null,
+          "duration": 5,
+          "milestone": false,
+          "manual": false,
+          "onTimeline": false,
+          "status": "not_started",
+          "progress": 0,
+          "pocName": "",
+          "pocContact": "",
+          "deps": [],
+          "schedStart": "2027-01-19",
+          "schedEnd": "2027-01-25",
+          "history": [
+            {
+              "id": "a9233e4d75143e06",
+              "at": "2026-11-02T23:29:59.258Z",
+              "type": "create",
+              "author": "Aaron",
+              "note": "Task created"
+            },
+            {
+              "id": "4cd4630b629db1f7",
+              "at": "2026-11-02T23:30:01.412Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "parent",
+                  "label": "Parent task",
+                  "from": "",
+                  "to": "test overall"
+                }
+              ]
+            },
+            {
+              "id": "a927d2912d0cca10",
+              "at": "2026-11-02T23:30:11.396Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "",
+                  "to": "test1 (FS)"
+                }
+              ]
+            },
+            {
+              "id": "6f75a524c0077d82",
+              "at": "2026-11-02T23:30:11.396Z",
+              "type": "schedule",
+              "author": "Aaron",
+              "note": "Rescheduled after a change to \"test3\" in test",
+              "changes": [
+                {
+                  "field": "schedStart",
+                  "label": "Scheduled start",
+                  "from": "2026-11-02",
+                  "to": "2027-01-19"
+                },
+                {
+                  "field": "schedEnd",
+                  "label": "Scheduled finish",
+                  "from": "2026-11-06",
+                  "to": "2027-01-25"
+                }
+              ]
+            },
+            {
+              "id": "8a63cf3426e48064",
+              "at": "2026-11-02T23:30:46.752Z",
+              "type": "edit",
+              "author": "Aaron",
+              "changes": [
+                {
+                  "field": "deps",
+                  "label": "Predecessors",
+                  "from": "test1 (FS)",
+                  "to": ""
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

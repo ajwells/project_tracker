@@ -3,6 +3,7 @@
 import { downloadBlob, toast } from './util.js';
 import { LocalStore, STORAGE_KEY } from './local-store.js';
 import { applyChange } from '../shared/routes.js';
+import { isFirmLead } from '../shared/scheduler.js';
 import { HttpError } from '../shared/store-core.js';
 
 const storage = {
@@ -62,6 +63,7 @@ export const ctx = {
     }
     return [...names].sort((a, b) => a.localeCompare(b));
   },
+  isFirm: (dep) => !!ctx.data?.firmLeads && isFirmLead(dep),
   isMobile: () => innerWidth <= 860,
 
   go(hash) {
@@ -84,7 +86,7 @@ function applySnapshot(snapshot) {
 }
 
 async function openLocalStore(serverState) {
-  const store = new LocalStore();
+  const store = new LocalStore({ firmLeads: serverState.firmLeads });
   if (store.damaged) toast('The projects stored in this browser could not be read, so they were set aside.', 'error');
   // A browser's first visit starts from whatever the server already has on file.
   if (!store.hasSavedCopy() && !store.damaged && serverState.projects.length) {
@@ -110,6 +112,7 @@ export async function refresh() {
   }
   if (useLocal) {
     local ??= await openLocalStore(snapshot);
+    local.firmLeads = snapshot.firmLeads;
     local.load();
     ctx.data = local.snapshot();
   } else {

@@ -1,5 +1,5 @@
 import { api, ctx } from '../ctx.js';
-import { confirmDialog, DEP_TYPES, h, openDialog, plural, toast, fmtDate } from '../util.js';
+import { confirmDialog, DEP_TYPES, describeDep, h, LAG_HELP, openDialog, parseLag, plural, selectOnFocus, toast, fmtDate } from '../util.js';
 import { currentMode, PROJECT_COLORS } from '../chart/core.js';
 import { orderedTasks } from '../chart/gantt.js';
 
@@ -132,14 +132,22 @@ export function openLinkDialog(project) {
   const others = (id) => projects.filter((p) => p.id !== id);
 
   const toProject = h('select', { onchange: () => sync() }, projects.map((p) => h('option', { value: p.id, selected: p.id === project?.id }, p.name)));
-  const toTask = h('select', {});
+  const plain = h('p', { class: 'dep-plain' });
+  const describe = () => {
+    const to = ctx.findTask(toTask.value);
+    const from = ctx.findTask(fromTask.value);
+    const lagDays = parseLag(lag.value, lag.validity.badInput);
+    plain.textContent = to && from && lagDays !== null ? describeDep({ type: type.value, lag: lagDays }, to.task, from.task, ctx.isFirm({ type: type.value, lag: lagDays })) : '';
+  };
+  const toTask = h('select', { onchange: () => describe() });
   const fromProject = h('select', { onchange: () => syncFrom() });
-  const fromTask = h('select', {});
-  const type = h('select', {}, Object.entries(DEP_TYPES).map(([k, v]) => h('option', { value: k }, `${v} (${k})`)));
-  const lag = h('input', { type: 'number', value: 0 });
+  const fromTask = h('select', { onchange: () => describe() });
+  const type = h('select', { onchange: () => describe() }, Object.entries(DEP_TYPES).map(([k, v]) => h('option', { value: k }, `${v} (${k})`)));
+  const lag = h('input', { type: 'number', value: 0, onfocus: selectOnFocus, oninput: () => describe() });
 
   function syncFrom() {
     fromTask.replaceChildren(...taskOptions(ctx.project(fromProject.value)));
+    describe();
   }
   function sync() {
     toTask.replaceChildren(...taskOptions(ctx.project(toProject.value)));
@@ -159,7 +167,12 @@ export function openLinkDialog(project) {
       toast('Those tasks are already linked.', 'error');
       return;
     }
-    const deps = [...task.deps, { taskId: fromTask.value, type: type.value, lag: Number(lag.value) || 0 }];
+    const lagDays = parseLag(lag.value, lag.validity.badInput);
+    if (lagDays === null) {
+      toast(LAG_HELP, 'error');
+      return;
+    }
+    const deps = [...task.deps, { taskId: fromTask.value, type: type.value, lag: lagDays }];
     if (await api('PATCH', `/api/tasks/${task.id}`, { deps })) close();
   };
 
@@ -171,6 +184,7 @@ export function openLinkDialog(project) {
       h('h3', {}, '…depends on'),
       h('div', { class: 'field-grid' }, field('Project', fromProject), field('Task', fromTask)),
       h('div', { class: 'field-grid' }, field('Type', type), field('Lag (working days)', lag)),
+      plain,
     ],
     footer: [
       h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Cancel'),

@@ -7,8 +7,14 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "test:browser": "node --test browser-tests/editing.test.js browser-tests/scheduling.test.js browser-tests/layout.test.js browser-tests/phone.test.js browser-tests/storage.test.js"
   },
-  "engines": { "node": ">=20" },
-  "private": true
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true,
+  "devDependencies": {
+    "puppeteer-core": "25.16.0"
+  }
 }

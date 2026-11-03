@@ -94,15 +94,19 @@ function isAuthorized(req, password) {
 }
 
 // A typo must not silently pick a mode: it could lose data, or write data that was meant to stay off disk.
-export function parseSaveData(value) {
+function parseOnOff(name, value, whenUnset) {
   const text = (value ?? '').trim().toLowerCase();
+  if (text === '') return whenUnset;
   if (['true', 'on', 'yes', '1'].includes(text)) return true;
-  if (['', 'false', 'off', 'no', '0'].includes(text)) return false;
-  throw new Error(`SAVE_DATA must be true or false, not "${value}".`);
+  if (['false', 'off', 'no', '0'].includes(text)) return false;
+  throw new Error(`${name} must be true or false, not "${value}".`);
 }
 
-export function createApp({ dataFile, password = process.env.APP_PASSWORD, saving = parseSaveData(process.env.SAVE_DATA) } = {}) {
-  const store = new Store(dataFile ?? process.env.DATA_FILE ?? join(ROOT, 'data', 'store.json'), { saving });
+export const parseSaveData = (value) => parseOnOff('SAVE_DATA', value, false);
+export const parseFirmLeads = (value) => parseOnOff('FIRM_LEADS', value, true);
+
+export function createApp({ dataFile, password = process.env.APP_PASSWORD, saving = parseSaveData(process.env.SAVE_DATA), firmLeads = parseFirmLeads(process.env.FIRM_LEADS) } = {}) {
+  const store = new Store(dataFile ?? process.env.DATA_FILE ?? join(ROOT, 'data', 'store.json'), { saving, firmLeads });
   const sseClients = new Set();
 
   store.subscribe((revision) => {
@@ -197,6 +201,7 @@ export function startServer({ port = Number(process.env.PORT) || 3000 } = {}) {
   let saving;
   try {
     saving = parseSaveData(process.env.SAVE_DATA);
+    parseFirmLeads(process.env.FIRM_LEADS);
   } catch (error) {
     console.error(error.message);
     process.exit(1);

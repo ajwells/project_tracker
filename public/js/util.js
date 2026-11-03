@@ -5,7 +5,7 @@ export function h(tag, props = {}, ...children) {
   const el = document.createElement(tag);
   for (const [key, value] of Object.entries(props || {})) {
     if (value === undefined || value === null || value === false) continue;
-    if (key.startsWith('on') && typeof value === 'function') el.addEventListener(key.slice(2).toLowerCase(), value);
+    if (key.startsWith('on') && typeof value === 'function') listen(el, key.slice(2).toLowerCase(), value);
     else if (key === 'class') el.className = value;
     else if (key === 'style' && typeof value === 'object') {
       for (const [prop, v] of Object.entries(value)) {
@@ -13,11 +13,76 @@ export function h(tag, props = {}, ...children) {
         else el.style[prop] = v;
       }
     }
-    else if (key === 'value' || key === 'checked' || key === 'disabled' || key === 'selected') el[key] = value;
+    else if (key === 'value') {
+      el.value = value;
+      el.rendered = el.value;
+    }
+    else if (key === 'checked' || key === 'disabled' || key === 'selected') el[key] = value;
     else el.setAttribute(key, value === true ? '' : value);
   }
   append(el, children);
   return el;
+}
+
+// One listener per event that calls the current handler, so updating an element
+// in place can give it the handlers of its replacement.
+function listen(el, name, handler) {
+  el.handlers ??= {};
+  if (!(name in el.handlers)) el.addEventListener(name, (event) => el.handlers[name]?.(event));
+  el.handlers[name] = handler;
+}
+
+const signature = (node) => (node.nodeType === 1
+  ? `${node.nodeName}|${node.getAttribute('class') ?? ''}|${node.getAttribute('name') ?? ''}`
+  : `#${node.nodeType}`);
+
+function morphChildren(current, next) {
+  let at = current.firstChild;
+  for (const child of [...next.childNodes]) {
+    const wanted = signature(child);
+    let match = at;
+    while (match && signature(match) !== wanted) match = match.nextSibling;
+    if (!match) {
+      current.insertBefore(child, at);
+      continue;
+    }
+    while (at !== match) {
+      const after = at.nextSibling;
+      at.remove();
+      at = after;
+    }
+    morph(match, child);
+    at = match.nextSibling;
+  }
+  while (at) {
+    const after = at.nextSibling;
+    at.remove();
+    at = after;
+  }
+}
+
+// Makes `current` match `next` while keeping its elements, so an update can't take
+// away the field someone is in or the button they're pressing. Text someone has
+// typed into the focused field and not yet saved is left alone.
+export function morph(current, next) {
+  if (current.nodeType !== 1) {
+    if (current.data !== next.data) current.data = next.data;
+    return;
+  }
+  for (const { name } of [...current.attributes]) if (!next.hasAttribute(name)) current.removeAttribute(name);
+  for (const { name, value } of [...next.attributes]) if (current.getAttribute(name) !== value) current.setAttribute(name, value);
+  for (const name of Object.keys(current.handlers ?? {})) current.handlers[name] = undefined;
+  for (const [name, handler] of Object.entries(next.handlers ?? {})) listen(current, name, handler);
+  morphChildren(current, next);
+  if ('checked' in current && current.checked !== next.checked) current.checked = next.checked;
+  if ('selected' in current && current.selected !== next.selected) current.selected = next.selected;
+  if (current.matches('input, textarea, select')) {
+    const unsaved = current === document.activeElement && current.value !== String(current.rendered ?? current.defaultValue);
+    if (!unsaved) {
+      if (current.value !== next.value) current.value = next.value;
+      current.rendered = next.value;
+    }
+  }
 }
 
 function append(el, children) {
@@ -117,6 +182,54 @@ export const DEP_TYPES = {
   FF: 'Finish → Finish',
   SF: 'Start → Finish',
 };
+// A lag typed into a number field. The browser reports text that isn't a number,
+// such as "0-2", as empty, so badInput is what tells that apart from a cleared field.
+export function parseLag(value, badInput = false) {
+  if (badInput) return null;
+  const lag = String(value).trim() === '' ? 0 : Number(value);
+  return Number.isInteger(lag) ? lag : null;
+}
+
+export const LAG_HELP = 'Lag must be a whole number of working days, such as 3, or -2 to overlap.';
+
+// Picks the whole value on the way in, so typing replaces the 0 instead of adding to it.
+export const selectOnFocus = (event) => {
+  const field = event.target;
+  const { value } = field;
+  setTimeout(() => {
+    // Not if typing has already begun, which selecting would then replace.
+    if (document.activeElement === field && field.value === value) field.select();
+  }, 0);
+};
+
+const workingDays = (n) => `${Math.abs(n)} working ${Math.abs(n) === 1 ? 'day' : 'days'}`;
+
+// A dependency in plain English: dep is { type, lag }, and each task is { name, milestone }.
+// A firm link is a rule both ways. Any other only sets the earliest date, so says so.
+export function describeDep(dep, successor, predecessor, firm = false) {
+  const fromStart = dep.type === 'SS' || dep.type === 'SF';
+  const toStart = dep.type === 'FS' || dep.type === 'SS';
+  const verb = successor.milestone ? 'falls' : toStart ? 'starts' : 'finishes';
+  const event = predecessor.milestone ? 'is reached' : fromStart ? 'starts' : 'finishes';
+  const lag = dep.lag | 0;
+  const earliest = firm ? '' : 'no earlier than ';
+  let when;
+  if (lag > 0) when = `${earliest}${workingDays(lag)} after`;
+  else if (lag < 0) when = `${earliest}${workingDays(lag)} before`;
+  else when = dep.type === 'FS' && !successor.milestone ? 'after' : earliest.trim();
+  return `"${successor.name}" ${verb} ${when} "${predecessor.name}" ${event}.`;
+}
+
+// Where a task sits against a link right now, when that isn't exactly what the link says.
+export function describeLinkBuffer(buffer, name, firm = false) {
+  if (buffer > 0 && firm) return `Right now "${name}" is ${workingDays(buffer)} later than this link allows.`;
+  if (buffer > 0) return `Right now "${name}" is ${workingDays(buffer)} later than this link requires, which is allowed. A link only sets the earliest date.`;
+  if (buffer < 0) return `Right now "${name}" is ${workingDays(buffer)} earlier than this link allows.`;
+  return null;
+}
+
+export const FIRM_NOTE = 'Firm link: it can\'t be later than this, and has no more float than the task it follows. This differs from the standard meaning of a negative SS or SF, which only sets the earliest date.';
+
 export const depSuffix = (dep) => `${dep.type}${dep.lag ? (dep.lag > 0 ? `+${dep.lag}d` : `${dep.lag}d`) : ''}`;
 
 export const statusPill = (status) => h('span', { class: `pill ${STATUS[status].cls}` }, STATUS[status].mark, ' ', STATUS[status].label);

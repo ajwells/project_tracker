@@ -174,18 +174,50 @@ function renderMain(route) {
   restoreScroll();
 }
 
+// A save that lands between pressing and releasing the mouse would replace what's
+// being clicked, and the click would be lost. So drawing waits for the release.
+let pressed = false;
+let drawWaiting = false;
+addEventListener('pointerdown', () => {
+  pressed = true;
+}, true);
+const released = () => {
+  pressed = false;
+  if (!drawWaiting) return;
+  drawWaiting = false;
+  setTimeout(() => ctx.render(), 0); // after the click that follows the release
+};
+addEventListener('pointerup', released, true);
+addEventListener('pointercancel', released, true);
+addEventListener('blur', (event) => {
+  if (event.target === window) released(); // the release may happen in another window
+});
+
+let revealedTask = null;
+
 ctx.render = () => {
   if (!ctx.data) return;
+  if (pressed) {
+    drawWaiting = true;
+    return;
+  }
   const route = parseRoute();
   ctx.route = route;
   hideTip();
   saveBanner.hidden = ctx.data.saving !== false;
+  // Before drawing, because charts size themselves to the room they have.
+  app.classList.toggle('has-drawer', !!(ctx.taskId && ctx.findTask(ctx.taskId)));
   const active = document.activeElement;
   const typing = active?.id && main.contains(active) && active.matches('input')
     ? { id: active.id, value: active.value, from: active.selectionStart, to: active.selectionEnd }
     : null;
   renderSidebar(route);
   renderMain(route);
+  // When the selection changes, make sure it can be seen, as the panel narrows the chart.
+  if (ctx.taskId !== revealedTask) {
+    revealedTask = ctx.taskId;
+    main.querySelector('[data-selected=ring]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
   renderDrawer(drawerHost);
   if (typing) {
     const again = document.getElementById(typing.id);

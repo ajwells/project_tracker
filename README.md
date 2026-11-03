@@ -2,7 +2,7 @@
 
 A multi-project planner in the spirit of Microsoft Project. It tracks tasks and dependencies, draws Gantt charts and timelines, and gets them into PowerPoint in one click. It works on desktop and mobile.
 
-It has no dependencies to install, only Node.js 20 or newer.
+Running it needs nothing installed except Node.js 20 or newer. Only the browser tests have a dependency.
 
 ## Run it
 
@@ -21,6 +21,7 @@ In WebStorm, open `package.json` and click the run arrow next to `start`. If `no
 | `PORT=8080` | Uses a different port (default 3000) |
 | `APP_PASSWORD=...` | Requires a password |
 | `DATA_FILE=path` | Stores data somewhere else (default `data/store.json`) |
+| `FIRM_LEADS=false` | Treats negative SS and SF links by the standard definition (default `true`, see [How scheduling works](#how-scheduling-works)) |
 | `SAVE_DATA=true` | Stores projects on the server and shares them (default `false`, which stores them in each browser) |
 
 ### Where data is stored
@@ -53,10 +54,12 @@ Browsers only allow copying images from HTTPS or localhost pages. Over a plain n
 ## Features
 
 - **Multiple projects**, with a portfolio view across all of them
-- **Dependencies**: finish-to-start, start-to-start, finish-to-finish and start-to-finish, with lag or lead in working days
+- **Dependencies**: finish-to-start, start-to-start, finish-to-finish and start-to-finish, with lag or lead in working days, each described in plain English
 - **Automatic scheduling** that follows dependencies and each project's working calendar (weekends and holidays), and refuses dependency loops
+- **Track each task by duration or by dates**: enter one, and the other fills in
 - **Critical path and float**, calculated across projects
 - **Summary tasks, milestones and baselines**
+- **Selected task highlighted** on the Gantt chart and timeline while its panel is open. The highlight never appears in exports
 - **Gantt charts**: drag a bar to move it or its right edge to resize (mouse only), and zoom from days to quarters
 - **Timelines** built for slides: milestones above a date band, phases and key tasks below
 - **Cross-project links**: tasks can depend on tasks in other projects. The Links tab shows who is waiting on whom and how much buffer each link has
@@ -79,8 +82,30 @@ Exports always use the light theme, whatever theme the app is in. A Gantt chart 
 
 ## How scheduling works
 
-- **Start is a request.** A task starts on the date you ask for, or later if its predecessors require it. If they move back, the task returns to the date you asked for.
+Each task is tracked one of two ways, set with **Track by** in the task panel:
+
+| | **Duration** (the default) | **Dates** |
+| --- | --- | --- |
+| **You enter** | The working days | The start and finish |
+| **Fills in** | The finish, and the start if none is set | The working days |
+| **If a linked task moves** | This task moves too | This task stays put and shows a conflict |
+
+Switching keeps the task's current dates and length. Switching back to duration lets its links set its start again.
+
+For a task tracked by duration, the start works like this:
+
+- **With no start date set**, a task goes wherever its links put it, earlier or later. Negative lag can pull it ahead of the day it was created. With no links, it stays where it is.
+- **With a start date set**, by typing one or dragging its bar, that date holds. The task only moves later if its links require it, and returns when they move back. If the date is keeping it later than its links need, the task panel says so and offers **Follow links**.
+
+Tasks saved before this setting existed count as having a start date set, so upgrading doesn't move anything.
+
+Also:
+
 - **Duration is in working days**, using that project's calendar.
+- **Most links only set the earliest date.** The task panel says each link in plain English, and says when a task is later than its link requires.
+- **Negative SS and SF links are firm, which differs from the standard.** "Task 2 finishes 30 working days before Task 1 starts" is a rule both ways: Task 2 moves with Task 1, it can't be later than that, and it has no more float than Task 1. Being later shows a conflict and marks the task at risk, without moving Task 1, so you decide what gives. By the standard meaning, these links only set the earliest date and the earlier task can slip freely. Set `FIRM_LEADS=false` for that behaviour. No dates change either way, only conflicts, float and the critical path.
+- **Critical means slipping moves a project's finish or breaks a firm link.** Critical tasks can be in other projects, if a link makes them matter there.
+- **Lag can be negative.** It counts working days in the calendar of the task that depends on the link. Without any lag, FS starts the working day after the predecessor finishes, SS starts when it starts, FF finishes when it finishes, and SF finishes the working day before it starts.
 - **Manually scheduled tasks** keep their dates and show a conflict if a predecessor runs past them.
 - **Completed tasks** stay where they finished.
 - **Summary tasks** roll up dates, status and progress from their subtasks, and a dependency on a summary applies to all its subtasks.
@@ -97,12 +122,18 @@ Files are fully checked first, so a bad file changes nothing. When `SAVE_DATA` i
 ## Development
 
 ```
-npm test        # scheduler and API tests
-npm run dev     # restart the server on file changes
+npm test                 # scheduling, storage and API tests
+npm run test:browser     # the real page in real Chrome
+npm run dev              # restart the server on file changes
 ```
+
+`npm test` needs nothing installed. `npm run test:browser` needs `npm install` once, which adds [puppeteer-core](https://pptr.dev/) for development only, and Google Chrome. If Chrome isn't found, set `CHROME_PATH` to where it's installed.
+
+The browser tests click, type and swipe with human timing, and catch what `npm test` can't: lost clicks, fields that don't update, phone scrolling and browser storage. Run them after changing anything in `public/js/` or `public/styles.css`. They start their own servers on free ports with temporary data files, so they don't touch your data or a server you already have running. They run side by side using half of your processor cores, up to 16 at once. Set `BROWSER_TEST_CONCURRENCY` to change that.
 
 | Path | Purpose |
 | --- | --- |
+| `browser-tests/` | Tests that drive the real page in Chrome |
 | `public/shared/` | Code used by both the server and the browser: scheduling, validation, history, import, and the API's change requests |
 | `public/js/local-store.js` | Keeps projects in the browser when `SAVE_DATA` is off |
 | `src/store.js` | Saves projects to disk when `SAVE_DATA` is on |

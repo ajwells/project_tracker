@@ -12,7 +12,7 @@ const STEM_LEVEL = 40;
 /**
  * groups: [{ label, color, items: [{ key, task, label, start, end, milestone, color, tip }] }]
  */
-export function layoutTimeline({ groups, pal, text, width, today, title, subtitle, legend }) {
+export function layoutTimeline({ groups, pal, text, width, today, title, subtitle, legend, selectedTask = null }) {
   const margin = 20;
   const items = groups.flatMap((g) => g.items);
   const todayN = toN(today);
@@ -67,7 +67,7 @@ export function layoutTimeline({ groups, pal, text, width, today, title, subtitl
     const labelCy = bandY - 18 - p.level * STEM_LEVEL - 16;
     const anchorX = Math.max(p.left + p.w / 2, Math.min(p.cx, p.left + p.w / 2));
     prims.above.push({ t: 'line', x1: p.cx, y1: labelCy + 16, x2: p.cx, y2: bandY, stroke: pal.gridStrong, width: 1 });
-    prims.above.push({ t: 'text', x: anchorX, y: labelCy - 7, s: p.name, size: 12.5, weight: 600, fill: pal.ink, anchor: 'middle', tip: p.m.tip, task: p.m.task, name: p.m.label });
+    prims.above.push({ t: 'text', x: anchorX, y: labelCy - 7, s: p.name, size: 12.5, weight: 600, fill: selectedTask && p.m.task === selectedTask ? pal.selected : pal.ink, anchor: 'middle', tip: p.m.tip, task: p.m.task, name: p.m.label });
     prims.above.push({ t: 'text', x: anchorX, y: labelCy + 8, s: p.dateLabel, size: 11, fill: pal.ink2, anchor: 'middle', tip: p.m.tip, task: p.m.task });
   }
 
@@ -98,6 +98,7 @@ export function layoutTimeline({ groups, pal, text, width, today, title, subtitl
   });
   for (const p of placed) {
     prims.band.push({ t: 'diamond', cx: p.cx, cy: bandY, r: 7.5, fill: p.m.color, stroke: pal.surface, strokeWidth: 1.5, tip: p.m.tip, task: p.m.task, name: `Milestone: ${p.m.label}` });
+    if (selectedTask && p.m.task === selectedTask) prims.band.push({ t: 'diamond', cx: p.cx, cy: bandY, r: 12, fill: 'none', stroke: pal.selected, strokeWidth: 2, tip: p.m.tip, task: p.m.task, selected: 'ring' });
   }
 
   // ---- bars below the band, packed into lanes ----
@@ -147,6 +148,7 @@ export function layoutTimeline({ groups, pal, text, width, today, title, subtitl
       lanes[lane] = reach;
       const barY = y + lane * (BAR_H + LANE_GAP);
       prims.below.push({ t: 'rect', x, y: barY, w, h: BAR_H, r: 5, fill: bar.color, tip: bar.tip, task: bar.task, name: bar.label });
+      if (selectedTask && bar.task === selectedTask) prims.below.push({ t: 'rect', x: x - 3, y: barY - 3, w: w + 6, h: BAR_H + 6, r: 7, stroke: pal.selected, strokeWidth: 2, tip: bar.tip, task: bar.task, selected: 'ring' });
       if (bar.progress > 0 && bar.progress < 100) {
         prims.below.push({ t: 'rect', x: x + 4, y: barY + BAR_H - 6, w: Math.max(2, (w - 8) * bar.progress / 100), h: 3, r: 1.5, fill: inkOn(bar.color), tip: bar.tip, task: bar.task, name: `Progress: ${bar.label}` });
       }

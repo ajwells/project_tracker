@@ -1,5 +1,5 @@
 import { api, ctx } from '../ctx.js';
-import { depSuffix, fmtDate, h, healthPill, icon, statusPill, STATUS } from '../util.js';
+import { depSuffix, describeDep, fmtDate, h, healthPill, icon, statusPill, STATUS } from '../util.js';
 import { currentMode, projectColor } from '../chart/core.js';
 import { orderedTasks } from '../chart/gantt.js';
 
@@ -10,7 +10,7 @@ export function predecessorChips(task, project) {
     const cross = found.project.id !== project.id;
     const suffix = dep.type === 'FS' && !dep.lag ? '' : ` ${depSuffix(dep)}`;
     const label = cross ? `${found.project.name} › ${found.task.computed.wbs}${suffix}` : `${found.task.computed.wbs}${suffix}`;
-    return h('span', { class: `dep-chip ${cross ? 'cross' : ''}`, title: `${found.project.name}: ${found.task.name}` }, label);
+    return h('span', { class: `dep-chip ${cross ? 'cross' : ''}`, title: describeDep(dep, task, found.task, ctx.isFirm(dep)) }, label);
   });
 }
 

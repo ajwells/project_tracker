@@ -16,7 +16,7 @@ const INDENT = 14;
  */
 export function layoutGantt({
   rows, links, pal, text, width, zoom = 'fit', labelWidth = 300, showPoc = true, showWbs = true,
-  showCritical = true, showBaseline = false, today, title, subtitle, legend = false, range,
+  showCritical = true, showBaseline = false, today, title, subtitle, legend = false, range, selectedTask = null,
 }) {
   const dated = rows.filter((r) => r.start);
   let minN = Math.min(...dated.flatMap((r) => [toN(r.start), r.baseline ? toN(r.baseline.start) : Infinity]));
@@ -120,6 +120,10 @@ export function layoutGantt({
   rows.forEach((row, i) => {
     const y = rowY(i);
     const cy = y + ROW / 2;
+    if (selectedTask && row.task === selectedTask) {
+      regions.labels.push({ t: 'rect', x: 0, y, w: labelWidth, h: ROW, fill: pal.selectedBand, selected: 'band' });
+      regions.body.push({ t: 'rect', x: labelWidth, y, w: totalW - labelWidth, h: ROW, fill: pal.selectedBand, selected: 'band' });
+    }
     if (row.kind === 'project') regions.labels.push({ t: 'rect', x: 0, y, w: labelWidth, h: ROW, fill: pal.surface2 });
     const heavy = row.kind === 'summary' || row.kind === 'project';
     let x = 10 + row.depth * INDENT;
@@ -159,6 +163,7 @@ export function layoutGantt({
 
   // ---- bars ----
   const geometry = new Map();
+  const rings = []; // drawn last, so the arrows don't cross them
   rows.forEach((row, i) => {
     if (!row.start) return;
     const y = rowY(i);
@@ -168,10 +173,15 @@ export function layoutGantt({
     const barH = showBaseline ? 14 : 16;
     const isCritical = showCritical && row.critical;
     const base = { tip: row.tip, task: row.task };
+    const isSelected = selectedTask && row.task === selectedTask;
+    if (isSelected && row.kind !== 'milestone') {
+      rings.push({ t: 'rect', x: x - 3, y: barY - 3, w: w + 6, h: barH + 6, r: 6, stroke: pal.selected, strokeWidth: 2, ...base, selected: 'ring' });
+    }
 
     if (row.kind === 'milestone') {
       const cx = X(toN(row.end)) + ppd / 2;
       const cy = barY + barH / 2;
+      if (isSelected) rings.push({ t: 'diamond', cx, cy, r: 11, fill: 'none', stroke: pal.selected, strokeWidth: 2, ...base, selected: 'ring' });
       geometry.set(row.key, { left: cx - 7, right: cx + 7, cy });
       regions.body.push({
         t: 'diamond', cx, cy, r: 7, fill: row.progress >= 100 ? pal.ink2 : row.color,
@@ -247,7 +257,7 @@ export function layoutGantt({
       dash: link.cross ? '4 3' : undefined,
     });
   }
-  regions.body.push(...routes);
+  regions.body.push(...routes, ...rings);
 
   // ---- today ----
   if (todayN >= startN && todayN <= endN) {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createApp, parseSaveData } from '../src/server.js';
+import { createApp, parseFirmLeads, parseSaveData } from '../src/server.js';
 
 let app;
 let base;
@@ -53,6 +53,47 @@ test('creates projects with distinct colors, and persists to disk', async () => 
   assert.notEqual(colors[0], colors[1]);
   const disk = JSON.parse(readFileSync(join(dir, 'store.json'), 'utf8'));
   assert.ok(disk.projects.some((p) => p.id === a));
+});
+
+test('FIRM_LEADS is on unless turned off, and a typo is refused', () => {
+  for (const unset of [undefined, '', '  ']) assert.equal(parseFirmLeads(unset), true);
+  for (const on of ['true', 'on', 'YES', '1']) assert.equal(parseFirmLeads(on), true);
+  for (const off of ['false', 'off', 'No', '0']) assert.equal(parseFirmLeads(off), false);
+  assert.throws(() => parseFirmLeads('maybe'), /FIRM_LEADS must be true or false/);
+});
+
+test('the setting reaches the schedule', async () => {
+  const firm = createApp({ dataFile: join(dir, 'firm-on.json'), password: '', saving: true, firmLeads: true });
+  const standard = createApp({ dataFile: join(dir, 'firm-off.json'), password: '', saving: true, firmLeads: false });
+  for (const [app, expected] of [[firm, true], [standard, false]]) {
+    const projectId = app.store.createProject({ name: 'P' });
+    const a = app.store.createTask(projectId, { name: 'A', start: '2026-06-01', duration: 5 });
+    const b = app.store.createTask(projectId, { name: 'B', start: '2026-05-25', duration: 5, deps: [{ taskId: a, type: 'SF', lag: -2 }] });
+    const state = app.store.snapshot();
+    assert.equal(state.firmLeads, expected);
+    const c = taskIn(state, b).computed;
+    assert.equal(c.links[0].firm, expected);
+    assert.deepEqual(c.conflicts.length > 0, expected);
+    await app.close();
+  }
+});
+
+test('negative lag travels through the API for every dependency type', async () => {
+  const p = await makeProject('Negative lag');
+  const a = await makeTask(p, 'A', { start: '2026-01-14', duration: 5 });
+  const expected = { FS: '2026-01-19', SS: '2026-01-12', FF: '2026-01-14', SF: '2026-01-07' };
+  for (const [type, start] of Object.entries(expected)) {
+    const b = await makeTask(p, type, { start: '2024-06-03', duration: 3, deps: [{ taskId: a, type, lag: -2 }] });
+    let state = (await api('GET', '/api/state')).json;
+    assert.deepEqual(taskIn(state, b).deps, [{ taskId: a, type, lag: -2 }]);
+    assert.equal(taskIn(state, b).computed.start, start, type);
+
+    const res = await patch(`/api/tasks/${b}`, { deps: [{ taskId: a, type, lag: 1.5 }] });
+    assert.equal(res.status, 400);
+    assert.match(res.json.error, /Lag/);
+    state = (await api('GET', '/api/state')).json;
+    assert.equal(taskIn(state, b).deps[0].lag, -2);
+  }
 });
 
 test('rejects invalid input with a readable message', async () => {

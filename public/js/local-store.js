@@ -7,8 +7,8 @@ import { emptyState, HttpError, StoreCore } from '../shared/store-core.js';
 export const STORAGE_KEY = 'tracker.store';
 
 export class LocalStore extends StoreCore {
-  constructor() {
-    super({ saving: false });
+  constructor({ firmLeads = true } = {}) {
+    super({ saving: false, firmLeads });
     this.load();
   }
 

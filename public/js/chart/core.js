@@ -38,6 +38,8 @@ export const PALETTES = {
     baseline: '#b4b3aa',
     today: '#1c1c1a',
     track: '#eeeeea',
+    selected: '#1f66c4',
+    selectedBand: '#e7f0fb',
   },
   dark: {
     mode: 'dark',
@@ -56,6 +58,8 @@ export const PALETTES = {
     baseline: '#6b6a62',
     today: '#f0efec',
     track: '#33332f',
+    selected: '#6ea8f0',
+    selectedBand: '#1d2d44',
   },
 };
 
@@ -124,7 +128,7 @@ function el(name, attrs) {
 }
 
 function drawPrimitive(p, font) {
-  const shared = { 'data-task': p.task, 'data-tip': p.tip, 'data-drag': p.drag ? 'true' : undefined };
+  const shared = { 'data-task': p.task, 'data-tip': p.tip, 'data-drag': p.drag ? 'true' : undefined, 'data-selected': p.selected };
   switch (p.t) {
     case 'rect':
       return el('rect', {

@@ -92,6 +92,23 @@ test('unreadable data is set aside, not overwritten', () => {
   }
 });
 
+test('dependency types and negative lags survive a new session in the browser', () => {
+  const first = new LocalStore();
+  const projectId = change(first, 'POST', '/api/projects', { name: 'Links' }).body.createdId;
+  const a = change(first, 'POST', `/api/projects/${projectId}/tasks`, { name: 'A', start: '2026-01-14', duration: 5 }).body.createdId;
+  const expected = { FS: '2026-01-19', SS: '2026-01-12', FF: '2026-01-14', SF: '2026-01-07' };
+  for (const type of Object.keys(expected)) {
+    change(first, 'POST', `/api/projects/${projectId}/tasks`, { name: type, start: '2024-06-03', duration: 3, deps: [{ taskId: a, type, lag: -2 }] });
+  }
+
+  const tasks = new LocalStore().snapshot().projects[0].tasks;
+  for (const [type, start] of Object.entries(expected)) {
+    const task = tasks.find((t) => t.name === type);
+    assert.deepEqual(task.deps, [{ taskId: a, type, lag: -2 }]);
+    assert.equal(task.computed.start, start, type);
+  }
+});
+
 test('clearing storage empties the store', () => {
   const store = new LocalStore();
   change(store, 'POST', '/api/projects', { name: 'Gone' });

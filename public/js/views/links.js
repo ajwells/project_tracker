@@ -2,7 +2,7 @@
 // and how much room each link has before it moves someone else's dates.
 
 import { ctx } from '../ctx.js';
-import { depSuffix, fmtDate, h, icon, plural } from '../util.js';
+import { depSuffix, describeDep, fmtDate, h, icon, plural } from '../util.js';
 import { currentMode, projectColor } from '../chart/core.js';
 import { openLinkDialog } from './dialogs.js';
 
@@ -34,7 +34,7 @@ function linkTable(links, mode, scrollKey) {
         return h('tr', {},
           h('td', { class: 'span-all', 'data-label': 'Depends on' }, taskCell(from.project, from.task, 'finishes', from.task.computed.end, mode)),
           h('td', { class: 'span-all', 'data-label': 'Waiting task' }, taskCell(to.project, to.task, 'starts', to.task.computed.start, mode)),
-          h('td', { 'data-label': 'Type', class: 'nowrap' }, depSuffix(link)),
+          h('td', { 'data-label': 'Type' }, h('span', { class: 'nowrap' }, depSuffix(link)), h('p', { class: 'dep-plain' }, describeDep(link, to.task, from.task, link.firm))),
           h('td', { 'data-label': 'Health' }, linkPill(link)));
       }))));
 }

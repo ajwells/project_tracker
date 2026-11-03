@@ -21,6 +21,7 @@ export function buildSample(todayIso) {
     notes: options.notes ?? '',
     parentId: options.parent ? id(options.parent) : null,
     start: options.start ?? todayIso,
+    startSet: options.start !== undefined,
     duration: options.milestone ? 0 : options.duration ?? 5,
     milestone: !!options.milestone,
     manual: false,
