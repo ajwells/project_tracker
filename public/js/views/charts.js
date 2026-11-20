@@ -2,11 +2,12 @@
 // while the chart scrolls, by drawing each region as its own SVG.
 
 import { api, ctx } from '../ctx.js';
-import { fmtDate, fmtRange, fromN, h, hideTip, icon, showTip, toN } from '../util.js';
+import { fmtDate, fmtRange, fromN, h, hideTip, icon, plural, showTip, toN } from '../util.js';
 import { currentMode, makeText, PALETTES, projectColor, renderSvg, SCREEN_FONT, mix } from '../chart/core.js';
 import { layoutGantt, portfolioRows, projectRows } from '../chart/gantt.js';
 import { layoutTimeline, portfolioGroups, projectGroups } from '../chart/timeline.js';
 import { openExportDialog } from '../export.js';
+import { heldEdit, previewEdit, proposeEdit } from '../held-edit.js';
 
 const seg = (options, value, onChange, label) => h('div', { class: 'seg', role: 'group', 'aria-label': label },
   options.map(([key, text]) => h('button', {
@@ -62,6 +63,7 @@ export function renderGanttView(view, project) {
     ? projectRows(project, ctx.data, fn, collapsed)
     : portfolioRows(ctx.data, fn, { detail: options.detail, collapsed }));
   const { rows, links } = build(colorFn, ctx.collapsed);
+  const held = heldEdit();
 
   const toolbar = h('div', { class: 'toolbar' },
     seg([['fit', 'Fit'], ['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['quarter', 'Quarter']], zoom, (z) => {
@@ -130,8 +132,9 @@ export function renderGanttView(view, project) {
     showBaseline,
     today: ctx.data.today,
     selectedTask: ctx.taskId, // on screen only: exports draw their own charts
+    range: heldRange(held),
   });
-  mountGantt(scroller, layout, pal);
+  mountGantt(scroller, layout, pal, rows, held);
   scroller.addEventListener('firstshow', () => {
     if (zoom === 'fit') return;
     const { startN, ppd } = layout.geometry;
@@ -139,7 +142,51 @@ export function renderGanttView(view, project) {
   });
 }
 
-function mountGantt(scroller, layout, pal) {
+// Room on the chart for everywhere a waiting change would put its tasks.
+function heldRange(held) {
+  if (!held) return undefined;
+  const moves = [held.preview.self, ...held.preview.moved];
+  return { start: moves.map((m) => m.start).sort()[0], end: moves.map((m) => m.end).sort().at(-1) };
+}
+
+// Dashed outlines of where tasks would go. These sit on top of the chart's drawing rather
+// than in it, so they can never reach an export.
+function drawGhosts(body, moves, g, rows, pal) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const layer = document.createElementNS(NS, 'g');
+  layer.setAttribute('pointer-events', 'none');
+  for (const move of moves) {
+    const index = rows.findIndex((r) => r.key === move.id);
+    if (index < 0) continue;
+    const cy = g.rowsTop + index * g.rowH + g.rowH / 2;
+    const left = g.labelWidth + (toN(move.start) - g.startN) * g.ppd;
+    const width = Math.max(3, (toN(move.end) - toN(move.start) + 1) * g.ppd);
+    let shape;
+    if (move.milestone) {
+      const cx = left + g.ppd / 2;
+      shape = document.createElementNS(NS, 'polygon');
+      shape.setAttribute('points', `${cx},${cy - 8} ${cx + 8},${cy} ${cx},${cy + 8} ${cx - 8},${cy}`);
+    } else {
+      shape = document.createElementNS(NS, 'rect');
+      shape.setAttribute('x', left);
+      shape.setAttribute('y', cy - 8);
+      shape.setAttribute('width', width);
+      shape.setAttribute('height', 16);
+      shape.setAttribute('rx', 4);
+    }
+    shape.setAttribute('fill', pal.selected);
+    shape.setAttribute('fill-opacity', 0.14);
+    shape.setAttribute('stroke', pal.selected);
+    shape.setAttribute('stroke-width', 1.5);
+    shape.setAttribute('stroke-dasharray', '4 3');
+    shape.setAttribute('data-ghost', move.id);
+    layer.append(shape);
+  }
+  body.append(layer);
+  return layer;
+}
+
+function mountGantt(scroller, layout, pal, rows, held) {
   const { regions, geometry: g, width, height } = layout;
   const chartW = width - g.labelWidth;
   const bodyH = g.rowsBottom - g.rowsTop;
@@ -154,6 +201,7 @@ function mountGantt(scroller, layout, pal) {
   const body = pane(regions.body, { x: g.labelWidth, y: g.rowsTop, w: chartW, h: bodyH }, 'pane-body');
   const grid = h('div', { class: 'gantt-grid', style: { gridTemplateColumns: `${g.labelWidth}px ${chartW}px` } }, corner, head, labels, body);
   scroller.append(grid);
+  const heldGhosts = held ? drawGhosts(body, [held.preview.self, ...held.preview.moved], g, rows, pal) : null;
 
   let dragged = false;
   grid.addEventListener('click', (event) => {
@@ -219,6 +267,30 @@ function mountGantt(scroller, layout, pal) {
     let delta = 0;
     let moved = false;
     const c = info.task.computed;
+    // Moving a task tracked by dates moves both of them.
+    const fieldsFor = (days) => {
+      if (resize) return { end: fromN(toN(c.end) + days) };
+      const fields = { start: fromN(toN(c.start) + days) };
+      if (info.task.trackBy === 'dates') fields.end = fromN(toN(c.end) + days);
+      return fields;
+    };
+    let previewedDelta = 0;
+    let knockOn = '';
+    let liveGhosts = null;
+    const showKnockOn = () => {
+      if (delta === previewedDelta) return;
+      previewedDelta = delta;
+      liveGhosts?.remove();
+      liveGhosts = null;
+      const preview = delta ? previewEdit(info.task.id, fieldsFor(delta)) : null;
+      const others = preview?.moved ?? [];
+      const conflicts = (preview?.conflicts ?? []).filter((x) => x.id !== info.task.id).length;
+      if (others.length) liveGhosts = drawGhosts(body, others, g, rows, pal);
+      const lines = [];
+      if (others.length) lines.push(`Moves ${plural(others.length, 'other task')}`);
+      if (conflicts) lines.push(`Causes ${plural(conflicts, 'conflict')}`);
+      knockOn = lines.length ? `\n${lines.join('\n')}` : '';
+    };
 
     const update = (moveEvent) => {
       const dx = pointX(moveEvent) - startX;
@@ -233,39 +305,57 @@ function mountGantt(scroller, layout, pal) {
         const minDelta = toN(c.start) - toN(c.end);
         delta = Math.max(delta, minDelta);
       }
+      showKnockOn();
+      heldGhosts?.remove();
       const shift = delta * g.ppd;
       ghost.setAttribute('x', resize ? info.left : info.left + shift);
       ghost.setAttribute('width', resize ? info.right + shift - info.left : info.right - info.left);
       const label = resize
         ? `Finish: ${fmtDate(fromN(toN(c.end) + delta), true)}`
         : `Start: ${fmtDate(fromN(toN(c.start) + delta), true)}`;
-      showTip(label, moveEvent.clientX, moveEvent.clientY);
+      showTip(`${label}${knockOn}`, moveEvent.clientX, moveEvent.clientY);
     };
     const finish = async () => {
       removeEventListener('pointermove', update);
       removeEventListener('pointerup', finish);
       removeEventListener('pointercancel', cancel);
+      removeEventListener('keydown', escape, true);
       document.body.style.cursor = '';
       ghost.remove();
+      liveGhosts?.remove();
       hideTip();
+      // Puts back the outlines of a change still waiting, which the drag took off.
+      if ((!moved || !delta) && heldGhosts && !heldGhosts.isConnected) body.append(heldGhosts);
       if (!moved) return;
       dragged = true;
       setTimeout(() => {
         dragged = false;
       }, 0);
       if (!delta) return;
-      // Moving a task tracked by dates moves both of them.
-      const patch = resize ? { end: fromN(toN(c.end) + delta) } : { start: fromN(toN(c.start) + delta) };
-      if (!resize && info.task.trackBy === 'dates') patch.end = fromN(toN(c.end) + delta);
-      await api('PATCH', `/api/tasks/${info.task.id}`, patch);
+      const fields = fieldsFor(delta);
+      if (proposeEdit(info.task.id, fields)) ctx.openTask(info.task.id);
+      else await api('PATCH', `/api/tasks/${info.task.id}`, fields);
     };
     const cancel = () => {
       moved = false;
       finish();
     };
+    // Esc abandons the drag. The release that follows mustn't count as a click on the bar.
+    const escape = (keyEvent) => {
+      if (keyEvent.key !== 'Escape') return;
+      keyEvent.stopPropagation();
+      if (moved) {
+        dragged = true;
+        addEventListener('pointerup', () => setTimeout(() => {
+          dragged = false;
+        }, 0), { once: true });
+      }
+      cancel();
+    };
     addEventListener('pointermove', update);
     addEventListener('pointerup', finish);
     addEventListener('pointercancel', cancel);
+    addEventListener('keydown', escape, true);
   });
 }
 

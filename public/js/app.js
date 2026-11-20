@@ -6,6 +6,7 @@ import { renderGanttView, renderTimelineView } from './views/charts.js';
 import { renderLinks } from './views/links.js';
 import { renderOverview } from './views/overview.js';
 import { renderDrawer } from './views/drawer.js';
+import { dropEdit, heldEdit } from './held-edit.js';
 import { openImportDialog, openNameDialog, openProjectDialog } from './views/dialogs.js';
 
 const PROJECT_TABS = [['tasks', 'Tasks'], ['gantt', 'Gantt'], ['timeline', 'Timeline'], ['links', 'Links']];
@@ -245,7 +246,9 @@ addEventListener('resize', () => {
 
 addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && ctx.taskId && !document.querySelector('dialog[open]')) {
-    ctx.taskId = null;
+    // A date change waiting for a decision goes first, and the panel stays open.
+    if (heldEdit()) dropEdit();
+    else ctx.taskId = null;
     ctx.render();
   }
 });

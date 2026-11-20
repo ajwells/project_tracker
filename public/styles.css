@@ -363,3 +363,12 @@ dialog.wide { width: min(1000px, calc(100vw - 24px)); }
 @media (hover: none) { .chart-scroll { -webkit-overflow-scrolling: touch; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media (forced-colors: active) { .progress > i { background: Highlight !important; } }
+
+/* A date change waiting for Apply or Cancel */
+.held-edit { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--warn); border-radius: 8px; background: var(--warn-soft); font-size: 12.5px; color: var(--ink); }
+.held-edit h4 { margin: 0; font-size: 13px; color: var(--warn); overflow-wrap: anywhere; }
+.held-edit-list { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.held-edit-list b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.held-edit-list span { color: var(--ink-2); }
+.held-edit-list .bad, .held-edit-list .bad span { color: var(--bad); }
+.held-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }

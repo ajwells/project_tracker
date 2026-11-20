@@ -4,6 +4,7 @@ import { api, ctx } from '../ctx.js';
 import { confirmDialog, DEP_TYPES, dayWord, describeDep, describeLinkBuffer, FIRM_NOTE, fmtDate, fmtWhen, h, healthPill, icon, LAG_HELP, morph, parseLag, plural, selectOnFocus, STATUS, toast } from '../util.js';
 import { orderedTasks } from '../chart/gantt.js';
 import { openNameDialog } from './dialogs.js';
+import { dropEdit, heldEdit, proposeEdit } from '../held-edit.js';
 
 let renderedFor = null;
 let listening = false;
@@ -17,6 +18,7 @@ export function renderDrawer(host) {
     host.addEventListener('focusout', () => setTimeout(() => renderDrawer(host), 0));
     renderDrawerHost = host;
   }
+  heldEdit(); // drops a waiting date if its task has been closed, on any page
   const found = ctx.taskId ? ctx.findTask(ctx.taskId) : null;
   const sameTask = renderedFor === ctx.taskId;
   renderedFor = found ? ctx.taskId : null;
@@ -30,9 +32,14 @@ export function renderDrawer(host) {
   // Updating in place keeps focus, scroll position and any click in progress.
   if (sameTask && host.firstElementChild) morph(host.firstElementChild, next);
   else host.replaceChildren(next);
+  // A change waiting for a decision has to be seen, on a short screen too.
+  const card = host.querySelector('.held-edit');
+  if (card && !shownCard) card.scrollIntoView({ block: 'nearest' });
+  shownCard = !!card;
 }
 
 let renderDrawerHost = null;
+let shownCard = false;
 const redraw = () => renderDrawer(renderDrawerHost);
 
 function buildDrawer({ project, task }) {
@@ -69,7 +76,24 @@ function buildDrawer({ project, task }) {
   // the year 0202 on the way to 2026. Typed dates save on Enter, on Tab (which can
   // stop at the calendar icon, still inside the field) and on leaving the field.
   // A date picked from the calendar saves right away.
-  const dateInput = (name, value, disabled) => {
+  // A date that would affect other tasks waits for Apply or Cancel instead.
+  const held = heldEdit();
+  const actualDates = { start: c.start, end: c.end };
+  const proposeDate = (el, name) => {
+    const fields = { ...held?.fields, [name]: el.value };
+    for (const key of Object.keys(fields)) if (fields[key] === actualDates[key]) delete fields[key];
+    el.rendered = el.value; // so the panel can put it back if this is cancelled
+    if (!Object.keys(fields).length) {
+      dropEdit();
+      ctx.render();
+    } else if (proposeEdit(task.id, fields)) {
+      ctx.render();
+    } else {
+      patch(fields);
+    }
+  };
+  const dateInput = (name, actual, disabled) => {
+    const value = held?.fields[name] ?? held?.preview.self[name] ?? actual;
     const commit = (el) => {
       el.typing = false;
       if (!el.value || el.value === value) return;
@@ -78,7 +102,7 @@ function buildDrawer({ project, task }) {
         toast('Enter a date with a four-digit year.', 'error');
         return;
       }
-      patch({ [name]: el.value });
+      proposeDate(el, name);
     };
     return h('input', {
       type: 'date', name, value, disabled, required: true,
@@ -115,10 +139,11 @@ function buildDrawer({ project, task }) {
       h('option', { value: 'dates', selected: byDates }, 'Dates (duration fills in)')), 'full'),
     field(task.milestone ? 'Date' : 'Start', dateInput('start', c.start, summary)),
     task.milestone ? null : field('Finish', dateInput('end', c.end, summary || !byDates)),
-    task.milestone ? null : field(summary ? 'Working days' : 'Duration', input('duration', c.duration, 'number', { min: 1, max: 3650, disabled: summary || byDates })),
+    task.milestone ? null : field(summary ? 'Working days' : 'Duration', input('duration', held?.preview.self.duration ?? c.duration, 'number', { min: 1, max: 3650, disabled: summary || byDates })),
     summary || task.milestone ? null : field('Counted in', h('select', { name: 'durationUnit', onchange: (e) => patch({ durationUnit: e.target.value }) },
       h('option', { value: 'working', selected: task.durationUnit !== 'calendar' }, 'Working days'),
       h('option', { value: 'calendar', selected: task.durationUnit === 'calendar' }, 'Calendar days'))),
+    held ? heldEditCard(held, task) : null,
     h('datalist', { id: 'poc-names' }, ctx.pocNames().map((n) => h('option', { value: n }))));
 
   const notices = [];
@@ -208,6 +233,58 @@ function buildDrawer({ project, task }) {
           await api('DELETE', `/api/tasks/${task.id}`);
         },
       }, icon('trash'), 'Delete task'))));
+}
+
+const shiftWords = (days) => `${plural(Math.abs(days), 'calendar day')} ${days > 0 ? 'later' : 'earlier'}`;
+
+function datesMoved(entry) {
+  const from = entry.fromStart !== entry.start ? entry.fromStart : entry.fromEnd;
+  const to = entry.fromStart !== entry.start ? entry.start : entry.end;
+  const which = entry.fromStart === entry.start ? 'Finish: ' : '';
+  return `${which}${fmtDate(from)} → ${fmtDate(to)} · ${shiftWords(entry.shift)}`;
+}
+
+function heldEditCard({ fields, preview }, task) {
+  const { self, moved, conflicts, finishes, buffers } = preview;
+  const others = conflicts.filter((c) => c.id !== task.id);
+  const title = moved.length
+    ? `This change moves ${plural(moved.length, 'other task')}`
+    : others.length ? 'This change causes a conflict' : 'This change no longer affects other tasks';
+  const inProject = (entry) => (entry.projectName ? `${entry.name} (${entry.projectName})` : entry.name);
+
+  // A button clicked with the keyboard is about to disappear, so give focus somewhere to go.
+  const refocus = (event) => {
+    if (!event.detail) document.querySelector(`.drawer [name=${Object.keys(fields)[0]}]`)?.focus();
+  };
+  const row = (name, detail, cls) => h('li', { class: cls }, h('b', {}, name), h('span', {}, detail));
+  const landed = fields.start && self.start !== fields.start ? fields.start : null;
+
+  return h('div', { class: 'held-edit', role: 'status' },
+    h('h4', {}, `${title}. Nothing is saved yet.`),
+    h('ul', { class: 'held-edit-list' },
+      conflicts.map((entry) => row(`New conflict: ${inProject(entry)}`, `Breaks its link to ${entry.with.map((n) => `"${n}"`).join(', ')}.`, 'bad')),
+      finishes.map((f) => row(finishes.length > 1 ? `${f.name} finish` : 'Project finish', `${fmtDate(f.from)} → ${fmtDate(f.to)}`)),
+      self.fromStart !== self.start || self.fromEnd !== self.end ? row('This task', datesMoved(self)) : null,
+      landed ? row('Date entered', `${fmtDate(landed)} isn't available, so this task lands on ${fmtDate(self.start)}, because of its links or calendar.`) : null,
+      moved.map((entry) => h('li', { 'data-moved': entry.id }, h('b', {}, inProject(entry)), h('span', {}, datesMoved(entry)))),
+      buffers.map((b) => row(`Buffer: ${b.from} → ${b.to}`, `${plural(b.was, dayWord(b.unit))} → ${plural(b.now, dayWord(b.unit))}`))),
+    h('div', { class: 'held-edit-actions' },
+      h('button', {
+        class: 'btn', type: 'button', 'data-action': 'cancel-edit',
+        onclick: (event) => {
+          dropEdit();
+          ctx.render();
+          refocus(event);
+        },
+      }, 'Cancel'),
+      h('button', {
+        class: 'btn primary', type: 'button', 'data-action': 'apply-edit',
+        onclick: async (event) => {
+          dropEdit();
+          await api('PATCH', `/api/tasks/${task.id}`, fields);
+          refocus(event);
+        },
+      }, 'Apply')));
 }
 
 // A save sends a task's whole list of links, so one built before the last save finished

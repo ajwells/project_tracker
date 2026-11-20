@@ -2,21 +2,18 @@
 
 Context for future working sessions: what was built, what broke, and why the app works the way it does. For how to use the app, see `README.md`. The code wins if this log disagrees with it.
 
-Covers the session of 2026-11-01 to 2026-11-03. Add new sessions at the end.
+Covers the sessions of 2026-11-01 to 2026-11-03. Add new sessions at the end.
 
 ## Current state (2026-11-03)
 
-- **Last commit:** `3c8590c`, the project day unit default and the link edit fix. `1172bf8` has the calendar and working day options and the two-sided history.
-- **Not committed:**
-  - Fix for browser test runs hanging and its tests
-  - This log
+- **Last commit:** `cbbca6d`, the browser test hang fix and this log.
+- **Not committed:** the date change preview (see the last section) and this update to the log.
 - **Tests:**
-  - `npm test`: 236 pass.
-  - `npm run test:browser`: 163 pass in about 19s, 30 full runs in a row clean.
-  - Breakage checks on day units and the project default: 38 of 38 caught.
+  - `npm test`: 249 pass.
+  - `npm run test:browser`: 193 pass in about 18s. The new file ran 5 more times clean.
 - **Running servers:**
-  - PID 35376 on port 3000, with `SAVE_DATA` and `FIRM_LEADS` unset. It serves `public/` from disk, so client changes only need a tab reload.
-  - PID 8496 on port 5173 is the user's separate Needlepoint Tracker project, not part of this app. Leave it alone.
+  - Port 3000, with `SAVE_DATA` and `FIRM_LEADS` unset. It serves `public/` from disk, so client changes only need a tab reload. Server code is unchanged by the preview.
+  - Port 5173 was the user's separate Needlepoint Tracker project, not part of this app. Leave it alone.
 
 ## Environment
 
@@ -193,3 +190,40 @@ The link data-loss bug showed up as one rare test failure. A test that holds sav
 - Clipboard to PowerPoint end to end in the current suite (the first build opened generated decks in PowerPoint)
 - Firm note in light mode or at phone size
 - Reaching the server from another device, or through Windows Firewall
+
+## Session of 2026-11-03: date change preview
+
+The user asked for a warning before a date change shifts other tasks, and chose to stop for Apply whenever another task would move, rather than only for serious changes.
+
+### How it works
+
+- **Dry run:** `public/shared/preview.js` runs the real `updateTask` on a throwaway `StoreCore` and compares the schedules, so the preview can't disagree with saving. It needs no server call in either storage mode.
+- **Held state:** `public/js/held-edit.js` holds one waiting edit. It belongs to the open task, and is worked out afresh whenever `ctx.data` changes.
+- **Panel:** the Start and Finish fields show the waiting date, and a card under them lists conflicts, finishes, this task, moved tasks and cross-project buffers, in that order, as a long list scrolls.
+- **Gantt:** dragging shows outlines of where other tasks would go and a count in the tooltip. Releasing opens the panel with the card, and the outlines stay until Apply or Cancel. Esc abandons a drag, which is new.
+
+### Decisions
+
+- **Stops for:** another task moving, or a new conflict on another task, since a task tracked by dates shows the effect as a conflict and not a move.
+- **Doesn't stop for:** a conflict on the edited task alone, a shrinking cross-project buffer alone, or the project finish moving with no other task affected. The card does show these when it appears.
+- **Refused edits** skip the preview and go to the save as before, so the existing messages still appear.
+- **Dropped without saving:** closing the panel or opening another task drops a waiting date. Esc cancels it first and closes the panel on the next press.
+- **Outlines aren't in the chart's drawing,** so they can't reach an export.
+- **Shifts are said in calendar days,** the only measure that means the same for tasks with different units.
+
+### Bug found by the new tests
+
+| Bug | Cause | Fix |
+|---|---|---|
+| A waiting date came back on reopening a task | Closing the panel on a page with no chart never re-checked the waiting edit | `renderDrawer` checks it on every draw |
+
+### Testing
+
+- `test/preview.test.js` and `browser-tests/held-edit.test.js` are new, and the existing drag test now presses Apply.
+- Breakage checks: 22 of 23 caught, after strengthening two tests that missed. The one left, counting only start changes as moves, appears to make no difference, because a task that isn't being edited keeps its length when it moves.
+- Against `project-tracker-export-2026-11-02.json`, moving each task a week each way gave the same result as saving. That plan has only 3 tasks that aren't summaries, so it's a light check.
+
+### Open items
+
+- **Other edits still save at once,** even when they shift tasks: duration, day unit, Track by, Follow links, milestone, manual, status, link edits, task moves and deletes.
+- **Not tested:** real pickers (tests set the value and send the change event), touch screens, the Timeline page showing a waiting change (it has no outlines), and plans of hundreds of tasks, where the preview runs on each day of a drag.

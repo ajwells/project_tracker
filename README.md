@@ -61,7 +61,8 @@ Browsers only allow copying images from HTTPS or localhost pages. Over a plain n
 - **Critical path and float**, calculated across projects
 - **Summary tasks, milestones and baselines**
 - **Selected task highlighted** on the Gantt chart and timeline while its panel is open. The highlight never appears in exports
-- **Gantt charts**: drag a bar to move it or its right edge to resize (mouse only), and zoom from days to quarters
+- **Gantt charts**: drag a bar to move it or its right edge to resize (mouse only, Esc cancels), and zoom from days to quarters
+- **See a date change's effect first**: if changing a date in the task panel or on the Gantt would move other tasks or cause a conflict for one, the change waits for **Apply** or **Cancel**. The panel lists what would change, and the Gantt outlines where tasks would go. A change that affects nothing else saves right away
 - **Timelines** built for slides: milestones above a date band, phases and key tasks below
 - **Cross-project links**: tasks can depend on tasks in other projects. The Links tab shows who is waiting on whom and how much buffer each link has
 - **Task history**: every field change is recorded with who, when, from and to. You can also post written updates, and dates moved by another task's change are logged with the cause

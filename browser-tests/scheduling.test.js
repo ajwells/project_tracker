@@ -160,6 +160,7 @@ for (const [mode, saving] of [['browser storage', undefined], ['server storage',
       await page.mouse.down();
       await page.mouse.move(bar.x + 120, bar.y, { steps: 6 });
       await page.mouse.up();
+      await pressText(page, '.held-edit button', 'Apply'); // tasks wait on this one, so it asks first
       const span = ({ start: from, finish }) => (Date.parse(finish) - Date.parse(from)) / 86400000;
       await soon(async () => {
         const moved = await saved('pred');
