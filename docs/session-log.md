@@ -2,17 +2,17 @@
 
 Context for future working sessions: what was built, what broke, and why the app works the way it does. For how to use the app, see `README.md`. The code wins if this log disagrees with it.
 
-Covers the sessions of 2026-11-01 to 2026-11-03. Add new sessions at the end.
+Covers the sessions of 2026-11-01 to 2026-11-20. Add new sessions at the end.
 
-## Current state (2026-11-03)
+## Current state (2026-11-20)
 
 - **Last commit:** `cbbca6d`, the browser test hang fix and this log.
-- **Not committed:** the date change preview (see the last section) and this update to the log.
+- **Not committed:** the date change preview (2026-11-03), action items (2026-11-20), and these updates to the log.
 - **Tests:**
-  - `npm test`: 249 pass.
-  - `npm run test:browser`: 193 pass in about 18s. The new file ran 5 more times clean.
+  - `npm test`: 261 pass.
+  - `npm run test:browser`: 199 pass in about 19s.
 - **Running servers:**
-  - Port 3000, with `SAVE_DATA` and `FIRM_LEADS` unset. It serves `public/` from disk, so client changes only need a tab reload. Server code is unchanged by the preview.
+  - Port 3000, with `SAVE_DATA` and `FIRM_LEADS` unset, started 2026-11-20 before the action item work. It serves `public/` from disk, so client changes only need a tab reload, but `public/shared/` also runs in the server, so the server needs a restart for server storage to accept action items. With `SAVE_DATA` off it doesn't matter, since the browser runs that code itself.
   - Port 5173 was the user's separate Needlepoint Tracker project, not part of this app. Leave it alone.
 
 ## Environment
@@ -227,3 +227,36 @@ The user asked for a warning before a date change shifts other tasks, and chose 
 
 - **Other edits still save at once,** even when they shift tasks: duration, day unit, Track by, Follow links, milestone, manual, status, link edits, task moves and deletes.
 - **Not tested:** real pickers (tests set the value and send the change event), touch screens, the Timeline page showing a waiting change (it has no outlines), and plans of hundreds of tasks, where the preview runs on each day of a drag.
+
+## Session of 2026-11-20: action items
+
+The user asked for tasks without dates as an action item tracker, with a task's name, current POC, status, progress, notes, history and updates.
+
+### How it works
+
+- **Storage:** a separate `project.actions` list, not tasks with a flag. Each item has `id`, `name`, `notes`, `status`, `progress`, `pocName`, `pocContact`, `createdAt` and `history`. Older data without the list reads as empty, and the export format and `SCHEMA_VERSION` are unchanged.
+- **Store:** `createAction`, `updateAction`, `addActionUpdate` and `deleteAction` in `store-core.js`. History records the same fields' changes with the same labels as tasks, and `normalizeStatus` is shared, so status and progress behave the same.
+- **API:** `POST /api/projects/:id/actions`, `PATCH` and `DELETE /api/actions/:id`, and `POST /api/actions/:id/updates`. Task routes return 404 for an action item's id, and the other way round.
+- **Page:** an **Action items** tab after Tasks (`views/actions.js`). It has search, POC and status filters, a **Show completed** box, the latest posted update, the last activity time, and an add box like the Tasks page's.
+- **Panel:** `ctx.taskId` names either kind, and `renderDrawer` builds `buildActionDrawer` when the id is an action item's. `historySection` takes the item's API path and is shared.
+- **Elsewhere:** POC suggestions include action items' POCs. Project cards on the overview show the open count. The delete project warning counts them.
+
+### Decisions
+
+- **A separate list rather than a task flag,** because tasks reach the scheduler, charts, links, exports, progress and the date preview. A flag would need a guard in each, and one missed would put a dateless item on a chart.
+- **Kept off the schedule, charts and project progress.** Nothing in the scheduler sees them.
+- **Ids are unique across tasks and action items,** checked on import and given new ids on a merge clash, since the panel opens either by id.
+- **POC contact is included,** as it sits beside Current POC on tasks.
+- **Not added:** due dates, ordering, links to tasks, an all-projects action list, and action items in PowerPoint exports. None were asked for.
+
+### Testing
+
+- `test/actions.test.js` (12) and `browser-tests/actions.test.js` (3 in each storage mode) are new.
+- Breakage checks: 3 of 3 caught (updates posted to the task route, the completed filter ignored, and import id clashes not renamed).
+- Screenshots at 1280px and on a 390px phone: no sideways scroll, and on a phone the five tabs fit and items show as cards.
+- **Screenshot gotcha:** a fresh browser profile against the real port 3000 server copies `data/store.json` in on its first visit, which can overwrite test data loaded straight after. Wait after the first load, or use a test server.
+
+### Not tested
+
+- Physical phones, and the panel with a very long history
+- Restarting the running port 3000 server with `SAVE_DATA=true` (the API tests cover server storage)

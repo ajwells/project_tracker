@@ -30,6 +30,7 @@ export const ctx = {
   taskId: null,
   collapsed: new Set(),
   filters: { search: '', poc: '', status: '' },
+  actionFilters: { search: '', poc: '', status: '', showDone: true },
   gantt: { zoom: null, critical: true, baseline: false, detail: 'key' },
   timelineScope: 'key',
   composer: new Map(), // unsent update text, by task id
@@ -55,11 +56,22 @@ export const ctx = {
     }
     return null;
   },
+  // Action items open in the same panel as tasks, so ctx.taskId can name either.
+  findAction(id) {
+    for (const project of ctx.data.projects) {
+      const action = project.actions.find((a) => a.id === id);
+      if (action) return { project, action };
+    }
+    return null;
+  },
+  hasOpenItem() {
+    return !!(ctx.taskId && (ctx.findTask(ctx.taskId) || ctx.findAction(ctx.taskId)));
+  },
   pocNames() {
     const names = new Set();
     for (const project of ctx.data.projects) {
       if (project.owner) names.add(project.owner);
-      for (const task of project.tasks) if (task.pocName) names.add(task.pocName);
+      for (const item of [...project.tasks, ...project.actions]) if (item.pocName) names.add(item.pocName);
     }
     return [...names].sort((a, b) => a.localeCompare(b));
   },

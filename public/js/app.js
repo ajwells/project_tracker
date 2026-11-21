@@ -2,6 +2,7 @@ import { api, ctx, exportFromBrowser, listenForChanges, refresh } from './ctx.js
 import { attachTips, fmtRange, h, hideTip, icon, plural, toast } from './util.js';
 import { currentMode, projectColor } from './chart/core.js';
 import { renderTasks } from './views/tasks.js';
+import { renderActions } from './views/actions.js';
 import { renderGanttView, renderTimelineView } from './views/charts.js';
 import { renderLinks } from './views/links.js';
 import { renderOverview } from './views/overview.js';
@@ -9,7 +10,7 @@ import { renderDrawer } from './views/drawer.js';
 import { dropEdit, heldEdit } from './held-edit.js';
 import { openImportDialog, openNameDialog, openProjectDialog } from './views/dialogs.js';
 
-const PROJECT_TABS = [['tasks', 'Tasks'], ['gantt', 'Gantt'], ['timeline', 'Timeline'], ['links', 'Links']];
+const PROJECT_TABS = [['tasks', 'Tasks'], ['actions', 'Action items'], ['gantt', 'Gantt'], ['timeline', 'Timeline'], ['links', 'Links']];
 const PORTFOLIO_TABS = [['overview', 'Overview'], ['gantt', 'Gantt'], ['timeline', 'Timeline'], ['links', 'Links']];
 
 const app = document.getElementById('app');
@@ -157,6 +158,7 @@ function renderMain(route) {
     if (route.tab === 'gantt') renderGanttView(view, project);
     else if (route.tab === 'timeline') renderTimelineView(view, project);
     else if (route.tab === 'links') renderLinks(view, project);
+    else if (route.tab === 'actions') renderActions(view, project);
     else renderTasks(view, project);
   } else if (!ctx.data.projects.length) {
     main.replaceChildren(header('Project Tracker', null), view);
@@ -207,7 +209,7 @@ ctx.render = () => {
   hideTip();
   saveBanner.hidden = ctx.data.saving !== false;
   // Before drawing, because charts size themselves to the room they have.
-  app.classList.toggle('has-drawer', !!(ctx.taskId && ctx.findTask(ctx.taskId)));
+  app.classList.toggle('has-drawer', ctx.hasOpenItem());
   const active = document.activeElement;
   const typing = active?.id && main.contains(active) && active.matches('input')
     ? { id: active.id, value: active.value, from: active.selectionStart, to: active.selectionEnd }

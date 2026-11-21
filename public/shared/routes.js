@@ -35,6 +35,10 @@ export function applyChange(store, method, pathname, body) {
       const taskId = store.createTask(id, body);
       return { status: 201, body: { ...store.snapshot(), createdId: taskId } };
     }
+    if (parts[2] === 'actions' && parts.length === 3 && method === 'POST') {
+      const actionId = store.createAction(id, body);
+      return { status: 201, body: { ...store.snapshot(), createdId: actionId } };
+    }
     if (parts[2] === 'baseline' && parts.length === 3) {
       if (method === 'POST') store.setBaseline(id, true);
       else if (method === 'DELETE') store.setBaseline(id, false);
@@ -58,6 +62,21 @@ export function applyChange(store, method, pathname, body) {
     }
     if (parts[2] === 'move' && parts.length === 3 && method === 'POST') {
       store.moveTask(id, body.direction, actor);
+      return ok();
+    }
+  }
+  if (parts[0] === 'actions' && parts[1]) {
+    const id = parts[1];
+    if (parts.length === 2 && method === 'PATCH') {
+      store.updateAction(id, body);
+      return ok();
+    }
+    if (parts.length === 2 && method === 'DELETE') {
+      store.deleteAction(id, actor);
+      return ok();
+    }
+    if (parts[2] === 'updates' && parts.length === 3 && method === 'POST') {
+      store.addActionUpdate(id, body);
       return ok();
     }
   }

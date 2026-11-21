@@ -65,6 +65,7 @@ Browsers only allow copying images from HTTPS or localhost pages. Over a plain n
 - **See a date change's effect first**: if changing a date in the task panel or on the Gantt would move other tasks or cause a conflict for one, the change waits for **Apply** or **Cancel**. The panel lists what would change, and the Gantt outlines where tasks would go. A change that affects nothing else saves right away
 - **Timelines** built for slides: milestones above a date band, phases and key tasks below
 - **Cross-project links**: tasks can depend on tasks in other projects. The Links tab shows who is waiting on whom and how much buffer each link has
+- **Action items**: each project has an **Action items** tab for follow-ups with no dates. Like tasks, they have a name, current POC, status, progress, notes, history and posted updates. They stay off the Gantt chart and timeline and don't count toward the project's progress. The list shows each item's latest update, and completed items can be hidden
 - **Task history**: every field change is recorded with who, when, from and to. You can also post written updates, and dates moved by another task's change are logged with the cause
 - **Current POC** on every task, with contact details, filtering, and a record of past POCs in the history
 - **Import and export** of all projects as one JSON file

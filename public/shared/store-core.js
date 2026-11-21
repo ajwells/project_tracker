@@ -157,6 +157,7 @@ export class StoreCore {
       crossLinks: schedule.crossLinks,
       projects: this.state.projects.map((project) => ({
         ...project,
+        actions: project.actions ?? [], // older data has none
         summary: schedule.projects.get(project.id),
         tasks: project.tasks.map((task) => ({ ...task, computed: schedule.tasks.get(task.id) })),
       })),
@@ -191,6 +192,7 @@ export class StoreCore {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         tasks: [],
+        actions: [],
       };
       draft.projects.push(project);
       return project.id;
@@ -379,6 +381,69 @@ export class StoreCore {
     }, { actor });
   }
 
+  // ---- action item mutations ----------------------------------------------
+  // Action items have no dates or links, so nothing here touches the schedule.
+
+  createAction(projectId, input) {
+    const actor = cleanActor(input.actor);
+    return this.#transact((draft) => {
+      const project = findProject(draft, projectId);
+      const action = {
+        id: newId(),
+        name: cleanString(input.name, 'Action item name', { required: true }),
+        notes: '',
+        status: 'not_started',
+        progress: 0,
+        pocName: '',
+        pocContact: '',
+        createdAt: new Date().toISOString(),
+        history: [],
+      };
+      applyActionFields(action, input);
+      normalizeStatus(action, input, 'not_started');
+      (project.actions ??= []).push(action);
+      project.updatedAt = new Date().toISOString();
+      addHistory(action, { type: 'create', author: actor, note: 'Action item created' });
+      return action.id;
+    }, { actor });
+  }
+
+  updateAction(actionId, input) {
+    const actor = cleanActor(input.actor);
+    return this.#transact((draft) => {
+      const { project, action } = findAction(draft, actionId);
+      const before = actionView(action);
+      const prevStatus = action.status;
+      applyActionFields(action, input);
+      normalizeStatus(action, input, prevStatus);
+      const changes = diffViews(before, actionView(action));
+      if (changes.length) addHistory(action, { type: 'edit', author: actor, changes });
+      project.updatedAt = new Date().toISOString();
+      return action.id;
+    }, { actor });
+  }
+
+  addActionUpdate(actionId, input) {
+    const actor = cleanActor(input.actor);
+    return this.#transact((draft) => {
+      const { project, action } = findAction(draft, actionId);
+      const note = cleanString(input.note, 'Update', { max: 5000, required: true });
+      addHistory(action, { type: 'update', author: actor, note });
+      project.updatedAt = new Date().toISOString();
+      return action.id;
+    }, { actor });
+  }
+
+  deleteAction(actionId, rawActor) {
+    const actor = cleanActor(rawActor);
+    return this.#transact((draft) => {
+      const { project } = findAction(draft, actionId);
+      project.actions = project.actions.filter((a) => a.id !== actionId);
+      project.updatedAt = new Date().toISOString();
+      return actionId;
+    }, { actor });
+  }
+
   moveTask(taskId, direction, rawActor) {
     const actor = cleanActor(rawActor);
     return this.#transact((draft) => {
@@ -458,10 +523,12 @@ export class StoreCore {
 
       // A task id that is already used by a project staying in the store gets a
       // fresh id, so importing can never silently cross-wire two tasks.
-      const taken = new Set(survivors.flatMap((p) => p.tasks.map((t) => t.id)));
+      // Action items share the panel with tasks, so their ids mustn't clash either.
+      const taken = new Set(survivors.flatMap((p) => [...p.tasks, ...(p.actions ?? [])].map((t) => t.id)));
       const remap = new Map();
       for (const project of parsed) {
         for (const task of project.tasks) if (taken.has(task.id)) remap.set(task.id, newId());
+        for (const action of project.actions) if (taken.has(action.id)) action.id = newId();
       }
       for (const project of parsed) {
         if (project.baseline) {
@@ -571,6 +638,36 @@ function findTask(draft, id) {
   }
   throw new HttpError(404, 'Task not found.');
 }
+
+function findAction(draft, id) {
+  for (const project of draft.projects) {
+    const action = project.actions?.find((a) => a.id === id);
+    if (action) return { project, action };
+  }
+  throw new HttpError(404, 'Action item not found.');
+}
+
+function applyActionFields(action, input) {
+  if (input.name !== undefined) action.name = cleanString(input.name, 'Action item name', { required: true });
+  if (input.notes !== undefined) action.notes = cleanString(input.notes, 'Notes', { max: 10000 });
+  if (input.progress !== undefined) action.progress = cleanInt(input.progress, 'Progress', 0, 100);
+  if (input.status !== undefined) {
+    if (!STATUSES.includes(input.status)) throw bad('Unknown status.');
+    action.status = input.status;
+  }
+  if (input.pocName !== undefined) action.pocName = cleanString(input.pocName, 'POC name', { max: 100 });
+  if (input.pocContact !== undefined) action.pocContact = cleanString(input.pocContact, 'POC contact', { max: 200 });
+}
+
+// The fields an action item's history records. The rest of FIELD_LABELS never applies.
+const actionView = (action) => ({
+  name: action.name,
+  notes: action.notes,
+  status: action.status,
+  progress: action.progress,
+  pocName: action.pocName,
+  pocContact: action.pocContact,
+});
 
 // A link that doesn't say which days it counts keeps what it had, or if it's new takes
 // the project's default.
@@ -729,6 +826,8 @@ function parseImport(payload) {
     for (const task of tasks) {
       if (task.milestone && tasks.some((t) => t.parentId === task.id)) task.milestone = false;
     }
+    if (raw.actions !== undefined && !Array.isArray(raw.actions)) throw bad(`${where} has an invalid action item list.`);
+    const actions = (raw.actions ?? []).map((a, i) => parseImportedAction(a, `${where}, action item ${i + 1}`, taskIds));
     return {
       id: raw.id,
       name: cleanString(raw.name, `${where} name`, { required: true }),
@@ -741,8 +840,31 @@ function parseImport(payload) {
       createdAt: isoTimestamp(raw.createdAt),
       updatedAt: isoTimestamp(raw.updatedAt),
       tasks,
+      actions,
     };
   });
+}
+
+// Ids are checked against tasks' too, since the panel opens either by id.
+function parseImportedAction(raw, where, ids) {
+  if (!raw || typeof raw !== 'object') throw bad(`${where} is not valid.`);
+  if (!ID_RE.test(raw.id)) throw bad(`${where} has an invalid id.`);
+  if (ids.has(raw.id)) throw bad(`${where} repeats id ${raw.id}.`);
+  ids.add(raw.id);
+  if (!STATUSES.includes(raw.status ?? 'not_started')) throw bad(`${where} has an unknown status.`);
+  const action = {
+    id: raw.id,
+    name: cleanString(raw.name, `${where} name`, { required: true }),
+    notes: cleanString(raw.notes, `${where} notes`, { max: 10000 }),
+    status: raw.status ?? 'not_started',
+    progress: cleanInt(raw.progress ?? 0, `${where} progress`, 0, 100),
+    pocName: cleanString(raw.pocName, `${where} POC name`, { max: 100 }),
+    pocContact: cleanString(raw.pocContact, `${where} POC contact`, { max: 200 }),
+    createdAt: isoTimestamp(raw.createdAt),
+    history: parseHistory(raw.history),
+  };
+  if (action.status === 'complete') action.progress = 100;
+  return action;
 }
 
 function parseImportedTask(raw, where, taskIds) {

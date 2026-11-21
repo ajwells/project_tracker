@@ -62,7 +62,7 @@ export function openProjectDialog(project = null) {
     const links = ctx.data.crossLinks.filter((l) => l.fromProjectId === project.id || l.toProjectId === project.id).length;
     const ok = await confirmDialog({
       title: `Delete "${project.name}"?`,
-      message: `This permanently deletes ${plural(project.tasks.length, 'task')} and their history${links ? `, and removes ${plural(links, 'cross-project link')}` : ''}. Export first if you might want it back.`,
+      message: `This permanently deletes ${plural(project.tasks.length, 'task')}${project.actions.length ? ` and ${plural(project.actions.length, 'action item')}` : ''}, and their history${links ? `, and removes ${plural(links, 'cross-project link')}` : ''}. Export first if you might want it back.`,
       confirmLabel: 'Delete project',
       danger: true,
     });

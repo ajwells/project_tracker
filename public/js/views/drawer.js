@@ -1,7 +1,7 @@
 // The task panel: details, current POC, dependencies and the full history.
 
 import { api, ctx } from '../ctx.js';
-import { confirmDialog, DEP_TYPES, dayWord, describeDep, describeLinkBuffer, FIRM_NOTE, fmtDate, fmtWhen, h, healthPill, icon, LAG_HELP, morph, parseLag, plural, selectOnFocus, STATUS, toast } from '../util.js';
+import { confirmDialog, DEP_TYPES, dayWord, describeDep, describeLinkBuffer, FIRM_NOTE, fmtDate, fmtWhen, h, healthPill, icon, LAG_HELP, morph, parseLag, plural, selectOnFocus, STATUS, statusPill, toast } from '../util.js';
 import { orderedTasks } from '../chart/gantt.js';
 import { openNameDialog } from './dialogs.js';
 import { dropEdit, heldEdit, proposeEdit } from '../held-edit.js';
@@ -20,15 +20,16 @@ export function renderDrawer(host) {
   }
   heldEdit(); // drops a waiting date if its task has been closed, on any page
   const found = ctx.taskId ? ctx.findTask(ctx.taskId) : null;
+  const action = found || !ctx.taskId ? null : ctx.findAction(ctx.taskId);
   const sameTask = renderedFor === ctx.taskId;
-  renderedFor = found ? ctx.taskId : null;
-  if (!found) {
+  renderedFor = found || action ? ctx.taskId : null;
+  if (!found && !action) {
     adding = { projectId: null, taskId: '' };
     host.replaceChildren();
     return;
   }
   if (!sameTask) adding = { projectId: null, taskId: '' };
-  const next = buildDrawer(found);
+  const next = found ? buildDrawer(found) : buildActionDrawer(action);
   // Updating in place keeps focus, scroll position and any click in progress.
   if (sameTask && host.firstElementChild) morph(host.firstElementChild, next);
   else host.replaceChildren(next);
@@ -217,7 +218,7 @@ function buildDrawer({ project, task }) {
       notices.length ? h('div', { class: 'stack', style: { gap: '6px' } }, notices) : null,
       h('section', { class: 'drawer-section' }, h('h3', {}, 'Details'), details, notes, options, outline),
       dependenciesSection(project, task),
-      historySection(task),
+      historySection(task, `/api/tasks/${task.id}`),
       h('div', {}, h('button', {
         class: 'btn danger', type: 'button',
         onclick: async () => {
@@ -401,7 +402,64 @@ function dependenciesSection(project, task) {
       : h('p', { class: 'small muted' }, 'Nothing depends on this yet.'));
 }
 
-function historySection(task) {
+// An action item: a task's who, what and history, with no dates, links or outline.
+function buildActionDrawer({ project, action }) {
+  const path = `/api/actions/${action.id}`;
+  const patch = (fields) => api('PATCH', path, fields);
+  const field = (label, control, cls = '') => h('label', { class: `field ${cls}` }, label, control);
+  const input = (name, value, extra = {}) => h('input', {
+    type: 'text', name, value: value ?? '', onchange: (e) => patch({ [name]: e.target.value }), ...extra,
+  });
+  const close = () => {
+    ctx.taskId = null;
+    ctx.render();
+  };
+
+  const details = h('div', { class: 'field-grid' },
+    field('Name', input('name', action.name), 'full'),
+    field('Current POC', input('pocName', action.pocName, { list: 'poc-names', placeholder: 'Who to ask', autocomplete: 'off' })),
+    field('POC contact', input('pocContact', action.pocContact, { placeholder: 'Email or phone', autocomplete: 'off' })),
+    field('Status', h('select', { name: 'status', onchange: (e) => patch({ status: e.target.value }) },
+      Object.entries(STATUS).map(([key, s]) => h('option', { value: key, selected: action.status === key }, s.label)))),
+    h('label', { class: 'field' }, h('span', { class: 'row', style: { justifyContent: 'space-between' } }, 'Progress', h('span', { class: 'num' }, `${action.progress}%`)),
+      h('input', {
+        type: 'range', name: 'progress', min: 0, max: 100, step: 5, value: action.progress,
+        oninput: (e) => {
+          e.target.closest('label').querySelector('.num').textContent = `${e.target.value}%`;
+        },
+        onchange: (e) => patch({ progress: Number(e.target.value) }),
+      })),
+    h('datalist', { id: 'poc-names' }, ctx.pocNames().map((n) => h('option', { value: n }))));
+
+  const notes = field('Notes', h('textarea', { name: 'notes', rows: 3, onchange: (e) => patch({ notes: e.target.value }) }, action.notes));
+
+  return h('aside', { class: 'drawer', role: 'dialog', 'aria-label': `Action item: ${action.name}` },
+    h('div', { class: 'drawer-head' },
+      h('div', { class: 'grow' },
+        h('div', { class: 'small muted truncate' }, `${project.name} · Action item`),
+        h('h2', { style: { fontSize: '16px', overflowWrap: 'anywhere' } }, action.name)),
+      h('button', { class: 'btn ghost icon', 'aria-label': 'Close action item', onclick: close }, icon('x'))),
+    h('div', { class: 'drawer-body' },
+      h('div', { class: 'row wrap' }, statusPill(action.status)),
+      h('section', { class: 'drawer-section' }, h('h3', {}, 'Details'), details, notes),
+      historySection(action, path),
+      h('div', {}, h('button', {
+        class: 'btn danger', type: 'button',
+        onclick: async () => {
+          const ok = await confirmDialog({
+            title: 'Delete this action item?',
+            message: `"${action.name}" will be deleted along with its history. This can't be undone.`,
+            confirmLabel: 'Delete action item',
+            danger: true,
+          });
+          if (!ok) return;
+          ctx.taskId = null;
+          await api('DELETE', path);
+        },
+      }, icon('trash'), 'Delete action item'))));
+}
+
+function historySection(task, path) {
   const box = h('textarea', {
     placeholder: 'Post an update: progress, risks, decisions…',
     'aria-label': 'Post an update',
@@ -413,7 +471,7 @@ function historySection(task) {
     const note = (ctx.composer.get(task.id) ?? '').trim();
     if (!note) return;
     document.activeElement?.blur();
-    const saved = await api('POST', `/api/tasks/${task.id}/updates`, { note });
+    const saved = await api('POST', `${path}/updates`, { note });
     if (saved) {
       ctx.composer.delete(task.id);
       ctx.render();

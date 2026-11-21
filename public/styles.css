@@ -364,6 +364,9 @@ dialog.wide { width: min(1000px, calc(100vw - 24px)); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media (forced-colors: active) { .progress > i { background: Highlight !important; } }
 
+/* Action items: the latest update is clipped to two lines in the list */
+.action-update span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 42ch; overflow-wrap: anywhere; }
+
 /* A date change waiting for Apply or Cancel */
 .held-edit { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--warn); border-radius: 8px; background: var(--warn-soft); font-size: 12.5px; color: var(--ink); }
 .held-edit h4 { margin: 0; font-size: 13px; color: var(--warn); overflow-wrap: anywhere; }

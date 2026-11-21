@@ -3,6 +3,8 @@ import { fmtDate, fmtRange, h, healthPill, icon, plural } from '../util.js';
 import { currentMode, projectColor } from '../chart/core.js';
 import { openProjectDialog } from './dialogs.js';
 
+const openActions = (project) => project.actions.filter((a) => a.status !== 'complete').length;
+
 export function renderOverview(view) {
   const mode = currentMode();
   const { projects, crossLinks } = ctx.data;
@@ -44,6 +46,7 @@ export function renderOverview(view) {
       h('div', { class: 'kv' },
         project.owner ? h('span', {}, `Owner: ${project.owner}`) : null,
         h('span', {}, plural(s.taskCount, 'task')),
+        openActions(project) ? h('span', {}, plural(openActions(project), 'open action item')) : null,
         s.upstream || s.downstream ? h('span', {}, `${s.upstream} upstream · ${s.downstream} downstream`) : null),
       nextMilestone ? h('div', { class: 'kv' }, h('span', {}, `Next: ${nextMilestone.name} (${fmtDate(nextMilestone.computed.start)})`)) : null);
   })));
