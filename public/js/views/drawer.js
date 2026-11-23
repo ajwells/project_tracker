@@ -173,12 +173,21 @@ function buildDrawer({ project, task }) {
     const names = namesOf(heldConflicts);
     notices.push(h('div', { class: 'callout bad' }, `! This date conflicts with ${names}. ${byDates ? 'It is tracked by dates' : 'It is manually scheduled'}, so it did not move.`));
   }
+  // The other side of a conflict: a task set by hand or by dates that this one is too late for.
+  const waiting = ctx.data.projects.flatMap((p) => p.tasks).filter((t) => (t.computed.conflicts ?? []).includes(task.id)
+    && !t.computed.links?.find((l) => l.taskId === task.id)?.firm);
+  if (waiting.length && !done) {
+    const behind = c.float < 0 ? ` It needs to finish ${plural(-c.float, dayWord(task.durationUnit))} earlier.` : '';
+    notices.push(h('div', { class: 'callout bad' }, `! This task is too late for ${namesOf(waiting.map((t) => t.id))}, which won't move for it.${behind}`));
+  }
   if (done && !summary) notices.push(h('div', { class: 'callout' }, 'Completed tasks stay put when their predecessors move.'));
 
+  const dayName = task.durationUnit === 'calendar' ? 'calendar day' : 'day';
   const scheduleLine = h('div', { class: 'row wrap' },
     healthPill(c.health),
     c.critical ? h('span', { class: 'pill bad' }, '! Critical path') : null,
-    !c.critical && !done && c.float > 0 ? h('span', { class: 'pill' }, `${plural(c.float, task.durationUnit === 'calendar' ? 'calendar day' : 'day')} of float`) : null);
+    c.float < 0 && !done ? h('span', { class: 'pill bad' }, `${plural(-c.float, dayName)} behind`) : null,
+    !c.critical && !done && c.float > 0 ? h('span', { class: 'pill' }, `${plural(c.float, dayName)} of float`) : null);
 
   const options = h('div', { class: 'stack', style: { gap: '8px' } },
     summary ? null : h('label', { class: 'check' },

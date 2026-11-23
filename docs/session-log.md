@@ -2,18 +2,34 @@
 
 Context for future working sessions: what was built, what broke, and why the app works the way it does. For how to use the app, see `README.md`. The code wins if this log disagrees with it.
 
-Covers the sessions of 2026-11-01 to 2026-11-20. Add new sessions at the end.
+Covers the sessions of 2026-11-01 to 2026-11-22. Add new sessions at the end.
 
-## Current state (2026-11-20)
+## Current state (2026-11-22)
 
-- **Last commit:** `cbbca6d`, the browser test hang fix and this log.
-- **Not committed:** the date change preview (2026-11-03), action items (2026-11-20), and these updates to the log.
+- **Last commit:** `db64154`, action items. `88f73c0` before it has the date change preview. The user made both commits.
+- **Not committed:** float into fixed-date tasks and conflict marks on the charts (2026-11-22), and this log. `project-tracker-export-2026-11-23.json` (the user's CSP V3 plan) is untracked.
 - **Tests:**
-  - `npm test`: 261 pass.
-  - `npm run test:browser`: 199 pass in about 19s.
-- **Running servers:**
-  - Port 3000, with `SAVE_DATA` and `FIRM_LEADS` unset, started 2026-11-20 before the action item work. It serves `public/` from disk, so client changes only need a tab reload, but `public/shared/` also runs in the server, so the server needs a restart for server storage to accept action items. With `SAVE_DATA` off it doesn't matter, since the browser runs that code itself.
-  - Port 5173 was the user's separate Needlepoint Tracker project, not part of this app. Leave it alone.
+  - `npm test`: 265 pass.
+  - `npm run test:browser`: 203 pass in about 25s.
+- **Running servers:** none on port 3000 as of 2026-11-22. The server serves `public/` from disk, so client changes only need a tab reload, but `public/shared/` also runs in the server, so it needs a restart after scheduler changes when `SAVE_DATA` is on. Port 5173 is the user's separate Needlepoint Tracker project, not part of this app. Leave it alone.
+
+## Problems to handle
+
+Found 2026-11-22 and deliberately left for later. Details are in that session's entry below. Remove an item here once it's fixed.
+
+1. **Too much float when a summary's subtasks are linked to each other.** The SS and SF rule in the backward pass (`scheduler.js`, "A summary starts with its first subtask") takes the summary's other subtasks to stay put while one slips. If one of them is linked after the slipping subtask, it moves along, and the slip reaches the link after all. This was already broken before 2026-11-22.
+   - Reproduce: random plan 451 with summary tasks (`randomPlan(451, { summaries: true })` in `test/critical-path.test.js`). t2 reports 60 days, and slipping it 60 moves the finish.
+   - Tried and backed out: ignoring subtasks linked after the slipping one. That gave tasks negative float with nothing broken (plan 114), and narrowing the rule broke plan 935. A fix probably needs to work out where a linked subtask would actually be pushed.
+2. **Float a little short across calendars.** A predecessor of a task that's already behind is measured against that task's position. When that task's project works weekends and the broken link counts working days, the first days of push can land on a weekend that the link doesn't count, so the float comes out up to a weekend short. It's never too long.
+   - Reproduce: random plan 923 with every option (`calendars: [{}, { workWeekends: true }], summaries: true, dates: true`). t0 reports 9 days, and the link only gets worse from day 12.
+3. **The task that's too late isn't at risk.** On the Tasks page and the overview, only the fixed task shows "At risk". The task that has to move shows "On track", though the panel and charts say it's behind. Likely fix: `healthOf` in `scheduler.js` treats negative float as at risk. Check the overview's at-risk list and the project card counts afterwards.
+4. **No red arrow for a link on a summary.** When a link sits on a summary and one of its subtasks breaks it, the arrow stays normal, because the conflict is recorded on the subtask (`brokenLink` in `chart/gantt.js`). The badge still shows on the subtask.
+5. **Negative float is checked loosely.** The brute-force check can't confirm the amount, because moving one task can be held up by another task's set start. Only hand-worked tests check the amounts. A stronger check would move the task together with what it drives.
+6. **Not tested:** the PowerPoint file with conflict badges opened in PowerPoint, conflict marks on phones, and the portfolio Gantt with conflicts.
+
+**Finding more:** the suite tries 200 random plans per kind, which misses items 1 and 2. To run 5,000, copy the test with `sed 's/seed <= 200;/seed <= 5000;/' test/critical-path.test.js > test/zz-stress.tmp.test.js`, run it with `node --test`, then delete the copy. It takes about a minute. Items 1 and 2 are the only failures expected.
+
+Older open items (security, `PORT` checks, mixed day units in summaries and progress, the tracked 2026-11-02 export, edits that skip the date preview) are under **Open items** further down and in the 2026-11-03 session.
 
 ## Environment
 
@@ -114,7 +130,7 @@ The link data-loss bug showed up as one rare test failure. A test that holds sav
 - **A start set by hand means "start no earlier than".** Links can push the task later, and it returns when they move back.
 - **Tracked by dates: dates hold.** A broken link is a conflict rather than a move, so typed dates are never overwritten.
 - **`task.start` stays synced for tasks following links,** so removing a link keeps the task where it is.
-- **Critical means** a slip moves a project's finish or breaks a firm link.
+- **Critical means** a slip moves a project's finish, breaks a firm link, or breaks a link into a task that won't move (set by hand or tracked by dates). The last was added 2026-11-22; see that session.
 
 ### Firm links (deliberately non-standard)
 
@@ -260,3 +276,46 @@ The user asked for tasks without dates as an action item tracker, with a task's 
 
 - Physical phones, and the panel with a very long history
 - Restarting the running port 3000 server with `SAVE_DATA=true` (the API tests cover server storage)
+
+## Session of 2026-11-22: float into fixed-date tasks, and conflict marks
+
+The user asked why Aircraft Integration in their CSP V3 plan had 10 days of float when it must finish before Flight Test 2, which has fixed dates. They then pointed out that conflicts weren't clear on the Gantt or Timeline either.
+
+### Float into fixed-date tasks
+
+- **Cause:** the backward pass skipped every pinned task (set by hand, tracked by dates or complete), a rule from the initial build. A fixed task's links never limited its predecessors, which were measured against the project finish instead. Slipping Aircraft Integration a day moved no finish but broke the link and put Flight Test 2 at risk.
+- **Rule now:** a link into a task set by hand or tracked by dates limits the predecessor against where that task actually sits. A predecessor already too late gets negative float. Complete tasks still limit nothing.
+- **CSP V3:** Aircraft Integration went from 10 to 0 (critical), and Raytheon Flight Orders from 47 to 37.
+- **The user chose** to make this the rule with no setting to turn it off, since the old numbers were wrong rather than a different convention.
+
+### Decisions
+
+- **A task already behind is measured from where it sits,** not from its late date. Otherwise its lateness passes back through links with room to spare, giving tasks far from the break too little float (random plan 4 showed this). The usual planning-tool convention, which passes negative float down the whole chain, was considered and not used, because this app's float means what a real slip does.
+- **So negative float means** how far a task must come earlier to mend the links it breaks itself. The tasks driving it show 0 and critical, not the same negative number.
+- **A summary's FS or FF link:** a subtask's limit is never earlier than the latest finish among the others, since it can't move the summary's finish until it finishes last. This only matters once the link is broken.
+
+### Conflict marks
+
+- **Gantt:** a round red **!** on the top left corner of the bar, a red **!** before the name in the label column, and the broken arrow drawn red and dashed, over the other arrows. Tooltips say which side of the link the task is on, and how many days behind.
+- **Timeline:** the badge goes inside the bar's left end, or just left of a bar too short for it. Both sides of a broken link are marked, since the Timeline has no arrows.
+- **Legends:** a Conflict entry, on screen and in exports, only when a conflict is shown.
+- **Toggle:** the user chose a **Conflicts** box on both toolbars, on by default, and exports follow it. It isn't saved between visits, like the Critical path box.
+- **Panel:** the task that's too late gets a red callout naming the fixed task and how far earlier it must finish, and a "N days behind" pill.
+- **Firm links:** a broken firm link marks the successor only, which is the late one, worded "Later than its firm link to ... allows".
+- **Same red as critical,** told apart by shape.
+
+### Testing
+
+- `test/critical-path.test.js`: the slip check now counts a link newly broken or broken further, not just a moved finish, and allows negative float. Added the CSP V3 case, negative float for both kinds of fixed task, and a complete task.
+- `browser-tests/conflicts.test.js` (4) is new: Gantt marks, label, arrow, legend and tooltips, the toggle, the Timeline, and the panel callout.
+- Breakage checks: 4 of 4 caught (fixed tasks skipped again, the summary finish rule removed, behind tasks measured by their late date, the toggle ignored for arrows).
+- Screenshots of the CSP V3 plan with Aircraft Integration a day late, light and dark, including the export preview.
+
+### Open items
+
+- **Summary subtasks linked to each other:** the SS and SF rule takes the summary's other subtasks to stay put, which fails when one is linked after the slipping one and moves with it. Random plan 451 (summary tasks) over-reports float, and the committed code before this session does the same. The suite runs 200 plans per kind, so it doesn't reach it. An attempt to fix it caused other errors and was backed out.
+- **Days off across calendars:** a predecessor's float into a task already behind can be up to a weekend short when that task's project works weekends and the broken link counts working days (random plan 923, all of it). It is never too long.
+- **Negative float is checked loosely** by brute force, because moving one task can be held up by another task's set start. Hand-worked tests check the amounts.
+- **Health:** the task that's too late stays "On track" on the Tasks page. Only the fixed task shows "At risk". Making it at risk too is open.
+- **A link on a summary** whose subtask breaks it doesn't get the red arrow, since the conflict sits on the subtask. The badge still shows.
+- **Not tested:** the PowerPoint file with the badge opened in PowerPoint, conflict marks on phones, and the portfolio Gantt with conflicts.

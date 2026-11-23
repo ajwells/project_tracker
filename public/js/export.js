@@ -30,6 +30,7 @@ function ganttLayout(spec, options, rows = spec.build(exportColor).rows, links =
     showWbs: true,
     showCritical: spec.showCritical,
     showBaseline: spec.showBaseline,
+    showConflicts: spec.showConflicts,
     today: spec.today,
     title: options.title ? spec.title : null,
     subtitle: options.title ? spec.subtitle : null,
@@ -57,6 +58,7 @@ function buildImage(spec, options) {
     title: options.title ? spec.title : null,
     subtitle: options.title ? spec.subtitle : null,
     legend: options.legend,
+    showConflicts: spec.showConflicts,
   });
   return draw(layout.primitives, layout.width, layout.height, 0);
 }
@@ -105,7 +107,7 @@ async function buildPptx(spec, options) {
       place(allPrimitives(layout), layout.width, layout.height, slide, top);
     });
   } else {
-    const layout = layoutTimeline({ groups: spec.build(exportColor), pal, text, width: EXPORT_WIDTH, today: spec.today, legend: options.legend });
+    const layout = layoutTimeline({ groups: spec.build(exportColor), pal, text, width: EXPORT_WIDTH, today: spec.today, legend: options.legend, showConflicts: spec.showConflicts });
     const slide = pptx.addSlide();
     const top = addHeading(slide, 1, 1);
     place(layout.primitives, layout.width, layout.height, slide, top);

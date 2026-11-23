@@ -2,7 +2,8 @@
 // milestones stand above it, and phases and key tasks hang below in tidy lanes.
 
 import { firstOfMonthN, fmtDate, monthName, toN, ymd } from '../util.js';
-import { inkOn } from './core.js';
+import { conflictBadge, inkOn } from './core.js';
+import { conflictLines, inConflict } from './gantt.js';
 
 const BAND_H = 30;
 const BAR_H = 26;
@@ -12,7 +13,7 @@ const STEM_LEVEL = 40;
 /**
  * groups: [{ label, color, items: [{ key, task, label, start, end, milestone, color, tip }] }]
  */
-export function layoutTimeline({ groups, pal, text, width, today, title, subtitle, legend, selectedTask = null }) {
+export function layoutTimeline({ groups, pal, text, width, today, title, subtitle, legend, selectedTask = null, showConflicts = true }) {
   const margin = 20;
   const items = groups.flatMap((g) => g.items);
   const todayN = toN(today);
@@ -99,10 +100,12 @@ export function layoutTimeline({ groups, pal, text, width, today, title, subtitl
   for (const p of placed) {
     prims.band.push({ t: 'diamond', cx: p.cx, cy: bandY, r: 7.5, fill: p.m.color, stroke: pal.surface, strokeWidth: 1.5, tip: p.m.tip, task: p.m.task, name: `Milestone: ${p.m.label}` });
     if (selectedTask && p.m.task === selectedTask) prims.band.push({ t: 'diamond', cx: p.cx, cy: bandY, r: 12, fill: 'none', stroke: pal.selected, strokeWidth: 2, tip: p.m.tip, task: p.m.task, selected: 'ring' });
+    if (showConflicts && p.m.conflict) prims.band.push(...conflictBadge(p.cx - 7, bandY - 7, pal, { tip: p.m.tip, task: p.m.task }, 6));
   }
 
   // ---- bars below the band, packed into lanes ----
   let y = bandY + BAND_H + 14;
+  const badges = []; // over the bars and their labels
   const barsTop = y;
   groups.forEach((group) => {
     const bars = group.items
@@ -123,7 +126,12 @@ export function layoutTimeline({ groups, pal, text, width, today, title, subtitl
       const w = Math.max(6, X(toN(bar.end) + 1) - x);
       const dates = bar.start === bar.end ? fmtDate(bar.start) : `${fmtDate(bar.start)} – ${fmtDate(bar.end)}`;
       const full = `${bar.label} · ${dates}`;
-      const inside = text.width(full, 12, 500) + 16 <= w ? full : text.width(bar.label, 12, 500) + 16 <= w ? bar.label : null;
+      // A conflict mark sits inside the bar's left end, or just left of a bar too short for it.
+      const mark = showConflicts && bar.conflict;
+      const markInside = mark && w >= 24;
+      const pad = markInside ? 16 : 0;
+      const markOutside = mark && !markInside ? 18 : 0;
+      const inside = text.width(full, 12, 500) + 16 + pad <= w ? full : text.width(bar.label, 12, 500) + 16 + pad <= w ? bar.label : null;
       let outside = null;
       let reach = x + w;
       if (!inside) {
@@ -134,12 +142,12 @@ export function layoutTimeline({ groups, pal, text, width, today, title, subtitl
           reach = x + w + 6 + text.width(outside, 12);
         } else {
           // No room on the right; put the label on the left of the bar.
-          const roomLeft = x - margin - 6;
+          const roomLeft = x - margin - 6 - markOutside;
           const left = text.truncate(full, Math.max(0, Math.min(roomLeft, 300)), 12);
           if (left && left !== '…') bar.leftLabel = left;
         }
       }
-      const leftEdge = bar.leftLabel ? x - 6 - text.width(bar.leftLabel, 12) : x;
+      const leftEdge = (bar.leftLabel ? x - 6 - text.width(bar.leftLabel, 12) : x) - markOutside;
       let lane = lanes.findIndex((end) => leftEdge >= end + 8);
       if (lane === -1) {
         lane = lanes.length;
@@ -149,20 +157,22 @@ export function layoutTimeline({ groups, pal, text, width, today, title, subtitl
       const barY = y + lane * (BAR_H + LANE_GAP);
       prims.below.push({ t: 'rect', x, y: barY, w, h: BAR_H, r: 5, fill: bar.color, tip: bar.tip, task: bar.task, name: bar.label });
       if (selectedTask && bar.task === selectedTask) prims.below.push({ t: 'rect', x: x - 3, y: barY - 3, w: w + 6, h: BAR_H + 6, r: 7, stroke: pal.selected, strokeWidth: 2, tip: bar.tip, task: bar.task, selected: 'ring' });
+      if (mark) badges.push(...conflictBadge(markInside ? x + 12 : x - 10, barY + BAR_H / 2, pal, { tip: bar.tip, task: bar.task }, 7));
       if (bar.progress > 0 && bar.progress < 100) {
         prims.below.push({ t: 'rect', x: x + 4, y: barY + BAR_H - 6, w: Math.max(2, (w - 8) * bar.progress / 100), h: 3, r: 1.5, fill: inkOn(bar.color), tip: bar.tip, task: bar.task, name: `Progress: ${bar.label}` });
       }
       if (inside) {
-        prims.below.push({ t: 'text', x: x + 8, y: barY + BAR_H / 2 - 2, s: inside, size: 12, weight: 500, fill: inkOn(bar.color), tip: bar.tip, task: bar.task, w: w - 10 });
+        prims.below.push({ t: 'text', x: x + 8 + pad, y: barY + BAR_H / 2 - 2, s: inside, size: 12, weight: 500, fill: inkOn(bar.color), tip: bar.tip, task: bar.task, w: w - 10 - pad });
       } else if (outside) {
         prims.below.push({ t: 'text', x: x + w + 6, y: barY + BAR_H / 2, s: outside, size: 12, fill: pal.ink, tip: bar.tip, task: bar.task });
       } else if (bar.leftLabel) {
-        prims.below.push({ t: 'text', x: x - 6, y: barY + BAR_H / 2, s: bar.leftLabel, size: 12, fill: pal.ink, anchor: 'end', tip: bar.tip, task: bar.task });
+        prims.below.push({ t: 'text', x: x - 6 - markOutside, y: barY + BAR_H / 2, s: bar.leftLabel, size: 12, fill: pal.ink, anchor: 'end', tip: bar.tip, task: bar.task });
       }
     }
     y += lanes.length * (BAR_H + LANE_GAP);
     if (multi) y += 8;
   });
+  prims.below.push(...badges);
   const bottom = Math.max(y, barsTop) + 6;
 
   // ---- today ----
@@ -197,7 +207,7 @@ export function layoutTimeline({ groups, pal, text, width, today, title, subtitl
 
 // ---- item selection ---------------------------------------------------------
 
-function itemFrom(task, color, projectName) {
+function itemFrom(task, color, state, projectName) {
   const c = task.computed;
   const range = c.start === c.end ? fmtDate(c.start, true) : `${fmtDate(c.start)} – ${fmtDate(c.end, true)}`;
   return {
@@ -209,7 +219,8 @@ function itemFrom(task, color, projectName) {
     milestone: !!task.milestone,
     color,
     progress: c.progress,
-    tip: [task.name, projectName, range, `${c.progress}% complete${task.pocName ? ` · POC: ${task.pocName}` : ''}`].filter(Boolean).join('\n'),
+    conflict: inConflict(task, state),
+    tip: [task.name, projectName, range, `${c.progress}% complete${task.pocName ? ` · POC: ${task.pocName}` : ''}`, ...conflictLines(task, state)].filter(Boolean).join('\n'),
   };
 }
 
@@ -222,9 +233,9 @@ export function selectTasks(project, scope) {
   return flagged.length ? flagged : project.tasks;
 }
 
-export function projectGroups(project, scope, colorFn) {
+export function projectGroups(project, scope, colorFn, state) {
   const color = colorFn(project.color);
-  return [{ label: project.name, color, items: selectTasks(project, scope).map((t) => itemFrom(t, color)) }];
+  return [{ label: project.name, color, items: selectTasks(project, scope).map((t) => itemFrom(t, color, state)) }];
 }
 
 export function portfolioGroups(state, scope, colorFn) {
@@ -232,6 +243,6 @@ export function portfolioGroups(state, scope, colorFn) {
     .filter((p) => p.tasks.length)
     .map((project) => {
       const color = colorFn(project.color);
-      return { label: project.name, color, items: selectTasks(project, scope).map((t) => itemFrom(t, color, project.name)) };
+      return { label: project.name, color, items: selectTasks(project, scope).map((t) => itemFrom(t, color, state, project.name)) };
     });
 }

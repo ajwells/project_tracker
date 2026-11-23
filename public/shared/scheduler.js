@@ -285,20 +285,37 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
   const backwardPass = () => { for (let i = order.length - 1; i >= 0; i--) {
     const id = order[i];
     if (isSummary(id)) continue;
-    const { project } = byId.get(id);
-    if (dates.get(id).pinned) continue; // pinned tasks ignore their predecessors
+    const { project, task } = byId.get(id);
+    const d = dates.get(id);
+    // A complete task's links are history. A task set by hand or by dates won't move for
+    // its links, so a predecessor finishing too late for it breaks a link rather than
+    // moving a finish: it is held to where the task actually sits, whatever room or
+    // lateness the task itself has, since only moving the task by hand changes that.
+    // A task already behind is measured from where it sits too, since a predecessor can
+    // slip until it starts pushing the task, and from then on every day is a day worse.
+    if (task.status === 'complete') continue;
+    const succLate = d.pinned ? d.end : Math.max(late.get(id), d.end);
     const succCal = calendars.get(project.id);
     for (const dep of effectiveDeps.get(id)) {
       const startBased = dep.type === 'SS' || dep.type === 'SF';
       const predLeaves = leavesOf(dep.taskId);
       for (const leaf of predLeaves) {
         const predShape = dates.get(leaf).shape;
-        const limit = latestFinish(dep, predShape, dates.get(id).shape, late.get(id), succCal, isFirm(dep));
+        let limit = latestFinish(dep, predShape, d.shape, succLate, succCal, isFirm(dep));
+        // Other subtasks hold the summary's start or finish while this one slips. This
+        // takes them to stay put, which isn't so for one linked after this one.
+        const holders = predLeaves.filter((l) => l !== leaf);
         if (startBased) {
           // A summary starts with its first subtask, so while another subtask holds
           // the summary's start early enough, this one can't affect the link.
-          const others = predLeaves.filter((l) => l !== leaf).map((l) => dates.get(l).start);
+          const others = holders.map((l) => dates.get(l).start);
           if (others.length && Math.min(...others) <= predShape.clock.add(limit, -predShape.span)) continue;
+        } else {
+          // A summary finishes with its last subtask, so this one can't affect the link
+          // until it finishes after the others. That only shows when the link is already
+          // broken or behind, since otherwise the last one is held to the same limit.
+          const others = holders.map((l) => dates.get(l).end);
+          if (others.length) limit = Math.max(limit, Math.max(...others));
         }
         if (limit < late.get(leaf)) late.set(leaf, limit);
       }

@@ -2,7 +2,7 @@
 // the screen can pin the header and labels while exports draw them all at once.
 
 import { fmtDate, fromN, plural, toN, ymd } from '../util.js';
-import { mix } from './core.js';
+import { conflictBadge, mix } from './core.js';
 import { axisBands, unitForScale, ZOOMS } from './scale.js';
 
 const ROW = 30;
@@ -16,7 +16,7 @@ const INDENT = 14;
  */
 export function layoutGantt({
   rows, links, pal, text, width, zoom = 'fit', labelWidth = 300, showPoc = true, showWbs = true,
-  showCritical = true, showBaseline = false, today, title, subtitle, legend = false, range, selectedTask = null,
+  showCritical = true, showBaseline = false, showConflicts = true, today, title, subtitle, legend = false, range, selectedTask = null,
 }) {
   const dated = rows.filter((r) => r.start);
   let minN = Math.min(...dated.flatMap((r) => [toN(r.start), r.baseline ? toN(r.baseline.start) : Infinity]));
@@ -140,6 +140,11 @@ export function layoutGantt({
       regions.labels.push({ t: 'text', x, y: cy, s: row.wbs, size: 11, fill: pal.ink3 });
       x += Math.max(14, text.width(row.wbs, 11)) + 6;
     }
+    // Repeated by the name, so it shows while the bar is scrolled out of view.
+    if (showConflicts && row.conflict) {
+      regions.labels.push({ t: 'text', x, y: cy, s: '!', size: 12.5, weight: 700, fill: pal.conflict, tip: row.tip, task: row.task, conflict: true, name: 'Conflict' });
+      x += 10;
+    }
     const nameMax = labelWidth - x - (showPoc ? pocW + 12 : 8);
     regions.labels.push({
       t: 'text', x, y: cy, s: text.truncate(row.label, nameMax, 12.5, heavy ? 600 : 400), size: 12.5,
@@ -174,6 +179,12 @@ export function layoutGantt({
     const isCritical = showCritical && row.critical;
     const base = { tip: row.tip, task: row.task };
     const isSelected = selectedTask && row.task === selectedTask;
+    if (showConflicts && row.conflict) {
+      // On the top left corner of the bar or diamond, clear of an arrow coming into its
+      // middle, and moved in where the label column would cover it.
+      const left = row.kind === 'milestone' ? X(toN(row.end)) + ppd / 2 - 5 : x + 1;
+      rings.push(...conflictBadge(Math.max(left, labelWidth + 8), barY - 1, pal, base, 7));
+    }
     if (isSelected && row.kind !== 'milestone') {
       rings.push({ t: 'rect', x: x - 3, y: barY - 3, w: w + 6, h: barH + 6, r: 6, stroke: pal.selected, strokeWidth: 2, ...base, selected: 'ring' });
     }
@@ -222,6 +233,7 @@ export function layoutGantt({
 
   // ---- dependency arrows ----
   const routes = [];
+  const broken = []; // over the others, so a broken link is never hidden under one
   for (const link of links) {
     const a = geometry.get(link.from);
     const b = geometry.get(link.to);
@@ -251,13 +263,17 @@ export function layoutGantt({
       points = [[x1, y1], [exitX, y1], [exitX, midY], [enterX, midY], [enterX, y2], [x2, y2]];
     }
     const isCritical = showCritical && link.critical;
+    if (showConflicts && link.conflict) {
+      broken.push({ t: 'route', points, arrow: true, width: 1.6, stroke: pal.conflict, dash: '2 2', conflict: true });
+      continue;
+    }
     routes.push({
       t: 'route', points, arrow: true, width: isCritical ? 1.5 : 1.1,
       stroke: isCritical ? pal.critical : link.cross ? pal.cross : pal.link,
       dash: link.cross ? '4 3' : undefined,
     });
   }
-  regions.body.push(...routes, ...rings);
+  regions.body.push(...routes, ...broken, ...rings);
 
   // ---- today ----
   if (todayN >= startN && todayN <= endN) {
@@ -288,6 +304,11 @@ export function layoutGantt({
     regions.foot.push({ t: 'diamond', cx: x + 5, cy: y, r: 5, fill: sample });
     x += 15;
     addText('Milestone');
+    if (showConflicts && rows.some((r) => r.conflict)) {
+      regions.foot.push(...conflictBadge(x + 7, y, pal));
+      x += 19;
+      addText('Conflict');
+    }
     if (links.some((l) => l.cross)) {
       regions.foot.push({ t: 'line', x1: x, y1: y, x2: x + 18, y2: y, stroke: pal.cross, width: 1.2, dash: '4 3' });
       x += 23;
@@ -317,9 +338,57 @@ export const allPrimitives = (layout) => {
   return [...top, ...body, ...labels, ...head, ...corner, ...foot];
 };
 
+// ---- conflicts --------------------------------------------------------------
+
+// For each task, the links it breaks: the tasks it's too late for, and the tasks
+// that make it later than its firm links allow. Worked out once per data load.
+const conflictCache = new WeakMap();
+function conflictIndex(state) {
+  if (conflictCache.has(state)) return conflictCache.get(state);
+  const byId = new Map(state.projects.flatMap((p) => p.tasks.map((t) => [t.id, t])));
+  const tooLateFor = new Map();
+  for (const task of byId.values()) {
+    const c = task.computed;
+    for (const predId of c.conflicts ?? []) {
+      if (c.links?.find((l) => l.taskId === predId)?.firm) continue; // the successor is the late one
+      if (!tooLateFor.has(predId)) tooLateFor.set(predId, []);
+      tooLateFor.get(predId).push(task.name);
+    }
+  }
+  const index = { byId, tooLateFor };
+  conflictCache.set(state, index);
+  return index;
+}
+
+const quoted = (names) => names.map((n) => `"${n}"`).join(', ');
+
+// Tooltip lines about broken links, for the task on either side of one.
+export function conflictLines(task, state) {
+  const { byId, tooLateFor } = conflictIndex(state);
+  const c = task.computed;
+  const lines = [];
+  const firm = (c.conflicts ?? []).filter((id) => c.links?.find((l) => l.taskId === id)?.firm);
+  const held = (c.conflicts ?? []).filter((id) => !firm.includes(id));
+  const name = (id) => byId.get(id)?.name;
+  if (held.length) lines.push(`! Conflicts with ${quoted(held.map(name).filter(Boolean))}, which ${held.length > 1 ? 'finish' : 'finishes'} too late for it`);
+  if (firm.length) lines.push(`! Later than its firm link to ${quoted(firm.map(name).filter(Boolean))} allows`);
+  if (tooLateFor.has(task.id)) lines.push(`! Too late for ${quoted(tooLateFor.get(task.id))}`);
+  return lines;
+}
+
+// Whether the link from a predecessor into a task is broken.
+const brokenLink = (task, predId) => (task.computed.conflicts ?? []).includes(predId);
+
+// Whether a task's bar gets the mark: one of its own links is broken. A summary only
+// has its own on a firm link, since other links hold on its subtasks.
+export const hasConflict = (task) => (task.computed.conflicts ?? []).length > 0;
+
+// Either side of a broken link, for charts without arrows to show the other side.
+export const inConflict = (task, state) => hasConflict(task) || conflictIndex(state).tooLateFor.has(task.id);
+
 // ---- row builders -----------------------------------------------------------
 
-function tipFor(task, projectName) {
+function tipFor(task, state, projectName) {
   const c = task.computed;
   const when = c.start === c.end ? fmtDate(c.start, true) : `${fmtDate(c.start)} – ${fmtDate(c.end, true)}`;
   const dayName = task.durationUnit === 'calendar' ? 'calendar day' : 'day';
@@ -327,14 +396,16 @@ function tipFor(task, projectName) {
   if (projectName) lines.push(projectName);
   lines.push(`${when}${task.milestone ? '' : ` · ${plural(c.duration, dayName)}`}`);
   lines.push(`${c.progress}% complete${task.pocName ? ` · POC: ${task.pocName}` : ''}`);
-  if (c.critical) lines.push('On the critical path');
+  lines.push(...conflictLines(task, state));
+  if (c.float < 0 && c.status !== 'complete') lines.push(`${plural(-c.float, dayName)} behind`);
+  else if (c.critical) lines.push('On the critical path');
   else if (c.float > 0 && c.status !== 'complete') lines.push(`${plural(c.float, dayName)} of float`);
   return lines.join('\n');
 }
 
 const rowKind = (task) => (task.computed.isSummary ? 'summary' : task.milestone ? 'milestone' : 'task');
 
-function taskRow(task, project, colorFn, extra = {}) {
+function taskRow(task, project, colorFn, state, extra = {}) {
   const c = task.computed;
   return {
     key: task.id,
@@ -351,7 +422,8 @@ function taskRow(task, project, colorFn, extra = {}) {
     critical: c.critical,
     baseline: project.baseline?.tasks?.[task.id],
     drag: !c.isSummary && !task.milestone && c.status !== 'complete',
-    tip: tipFor(task),
+    conflict: hasConflict(task),
+    tip: tipFor(task, state),
     ...extra,
   };
 }
@@ -378,7 +450,7 @@ export function orderedTasks(project, collapsed = new Set()) {
 export function projectRows(project, state, colorFn, collapsed = new Set()) {
   const visible = orderedTasks(project, collapsed);
   const shown = new Set(visible.map((t) => t.id));
-  const rows = visible.map((task) => taskRow(task, project, colorFn, {
+  const rows = visible.map((task) => taskRow(task, project, colorFn, state, {
     collapsible: task.computed.isSummary,
     collapsed: collapsed.has(task.id),
   }));
@@ -398,7 +470,7 @@ export function projectRows(project, state, colorFn, collapsed = new Set()) {
     if (externals.has(task.id)) return;
     const owner = projectOf.get(task.id);
     externals.set(task.id, {
-      ...taskRow(task, owner, colorFn),
+      ...taskRow(task, owner, colorFn, state),
       kind: 'external',
       external: true,
       wbs: '',
@@ -406,7 +478,7 @@ export function projectRows(project, state, colorFn, collapsed = new Set()) {
       drag: false,
       baseline: null,
       label: `${owner.name} › ${task.name}`,
-      tip: `${direction}\n${tipFor(task, owner.name)}`,
+      tip: `${direction}\n${tipFor(task, state, owner.name)}`,
     });
   };
 
@@ -418,7 +490,7 @@ export function projectRows(project, state, colorFn, collapsed = new Set()) {
       const cross = projectOf.get(pred.id).id !== project.id;
       if (cross) addExternal(pred, 'This project depends on it');
       if (cross || shown.has(pred.id)) {
-        links.push({ from: pred.id, to: task.id, type: dep.type, cross, critical: pred.computed.critical && task.computed.critical });
+        links.push({ from: pred.id, to: task.id, type: dep.type, cross, critical: pred.computed.critical && task.computed.critical, conflict: brokenLink(task, pred.id) });
       }
     }
   }
@@ -428,7 +500,7 @@ export function projectRows(project, state, colorFn, collapsed = new Set()) {
       for (const dep of task.deps) {
         if (!shown.has(dep.taskId)) continue;
         addExternal(task, 'Depends on this project');
-        links.push({ from: dep.taskId, to: task.id, type: dep.type, cross: true, critical: false });
+        links.push({ from: dep.taskId, to: task.id, type: dep.type, cross: true, critical: false, conflict: brokenLink(task, dep.taskId) });
       }
     }
   }
@@ -466,7 +538,7 @@ export function portfolioRows(state, colorFn, { detail = 'key', collapsed = new 
         : !task.computed.isSummary && (task.milestone || crossIds.has(task.id) || task.onTimeline);
       if (!keep) continue;
       shown.add(task.id);
-      rows.push(taskRow(task, project, colorFn, { wbs: '', depth: 1, drag: false, baseline: null, tip: tipFor(task, project.name) }));
+      rows.push(taskRow(task, project, colorFn, state, { wbs: '', depth: 1, drag: false, baseline: null, tip: tipFor(task, state, project.name) }));
     }
   }
   for (const project of state.projects) {
@@ -475,7 +547,7 @@ export function portfolioRows(state, colorFn, { detail = 'key', collapsed = new 
       for (const dep of task.deps) {
         if (!shown.has(dep.taskId)) continue;
         const cross = !project.tasks.some((t) => t.id === dep.taskId);
-        if (detail === 'all' || cross) links.push({ from: dep.taskId, to: task.id, type: dep.type, cross, critical: false });
+        if (detail === 'all' || cross) links.push({ from: dep.taskId, to: task.id, type: dep.type, cross, critical: false, conflict: brokenLink(task, dep.taskId) });
       }
     }
   }

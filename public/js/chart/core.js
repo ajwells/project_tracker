@@ -33,6 +33,7 @@ export const PALETTES = {
     ink3: '#7b7a73',
     summary: '#3d3d39',
     critical: '#c22f2e',
+    conflict: '#c22f2e',
     link: '#8a897f',
     cross: '#1f66c4',
     baseline: '#b4b3aa',
@@ -53,6 +54,7 @@ export const PALETTES = {
     ink3: '#96958c',
     summary: '#c3c2b7',
     critical: '#f08584',
+    conflict: '#f08584',
     link: '#7d7c74',
     cross: '#6ea8f0',
     baseline: '#6b6a62',
@@ -69,6 +71,14 @@ export function currentMode() {
   const forced = document.documentElement.dataset.theme;
   if (forced) return forced;
   return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+// A round "!" mark for a broken link, as plain shapes so it reaches every export.
+export function conflictBadge(cx, cy, pal, extra = {}, r = 7) {
+  return [
+    { t: 'rect', x: cx - r, y: cy - r, w: r * 2, h: r * 2, r, fill: pal.conflict, stroke: pal.surface, strokeWidth: 1.5, name: 'Conflict', ...extra, conflict: true },
+    { t: 'text', x: cx, y: cy + 0.5, s: '!', size: r * 1.55, weight: 700, fill: pal.surface, anchor: 'middle', ...extra, conflict: true },
+  ];
 }
 
 const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -128,7 +138,7 @@ function el(name, attrs) {
 }
 
 function drawPrimitive(p, font) {
-  const shared = { 'data-task': p.task, 'data-tip': p.tip, 'data-drag': p.drag ? 'true' : undefined, 'data-selected': p.selected };
+  const shared = { 'data-task': p.task, 'data-tip': p.tip, 'data-drag': p.drag ? 'true' : undefined, 'data-selected': p.selected, 'data-conflict': p.conflict ? 'true' : undefined };
   switch (p.t) {
     case 'rect':
       return el('rect', {
@@ -156,7 +166,7 @@ function drawPrimitive(p, font) {
       });
     }
     case 'route': {
-      const group = el('g', {});
+      const group = el('g', { 'data-conflict': p.conflict ? 'true' : undefined });
       group.append(el('polyline', {
         points: p.points.map((pt) => pt.join(',')).join(' '), fill: 'none', stroke: p.stroke,
         'stroke-width': p.width ?? 1.2, 'stroke-dasharray': p.dash, 'stroke-linejoin': 'round',
@@ -194,10 +204,11 @@ export function renderSvg(prims, { width, height, font = SCREEN_FONT, view, back
 
 export function svgToString(svg) {
   const clone = svg.cloneNode(true);
-  for (const node of clone.querySelectorAll('[data-tip],[data-task],[data-drag]')) {
+  for (const node of clone.querySelectorAll('[data-tip],[data-task],[data-drag],[data-conflict]')) {
     node.removeAttribute('data-tip');
     node.removeAttribute('data-task');
     node.removeAttribute('data-drag');
+    node.removeAttribute('data-conflict');
   }
   return new XMLSerializer().serializeToString(clone);
 }

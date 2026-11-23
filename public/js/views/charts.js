@@ -35,11 +35,14 @@ function portfolioSpan() {
   };
 }
 
-function ganttLegend(pal, color, showCritical, showBaseline, hasCross) {
+const conflictKey = (pal) => h('span', {}, h('i', { class: 'conflict-key', style: { background: pal.conflict, color: pal.surface } }, '!'), 'Conflict');
+
+function ganttLegend(pal, color, showCritical, showBaseline, hasCross, hasConflicts) {
   return h('div', { class: 'legend' },
     h('span', {}, h('i', { style: { background: `linear-gradient(90deg, ${color} 50%, ${mix(color, pal.surface, 0.68)} 50%)` } }), 'Done / remaining'),
     showCritical ? h('span', {}, h('i', { style: { border: `1.5px solid ${pal.critical}` } }), 'Critical path') : null,
     h('span', {}, h('i', { class: 'ms', style: { background: color } }), 'Milestone'),
+    hasConflicts ? conflictKey(pal) : null,
     hasCross ? h('span', {}, h('i', { style: { height: 0, borderTop: `1.5px dashed ${pal.cross}`, borderRadius: 0 } }), 'Cross-project link') : null,
     showBaseline ? h('span', {}, h('i', { style: { height: '3px', background: pal.baseline } }), 'Baseline') : null,
     h('span', {}, h('i', { style: { width: 0, height: '12px', borderLeft: `1.5px dashed ${pal.today}`, borderRadius: 0 } }), 'Today'));
@@ -58,6 +61,7 @@ export function renderGanttView(view, project) {
   const hasBaseline = !!project?.baseline;
   const showBaseline = hasBaseline && options.baseline;
   const showCritical = options.critical && !!project;
+  const showConflicts = options.conflicts;
 
   const build = (fn, collapsed) => (project
     ? projectRows(project, ctx.data, fn, collapsed)
@@ -77,6 +81,10 @@ export function renderGanttView(view, project) {
       options.detail = d;
       ctx.render();
     }, 'Detail'),
+    checkbox('Conflicts', options.conflicts, (v) => {
+      options.conflicts = v;
+      ctx.render();
+    }),
     hasBaseline ? checkbox('Baseline', options.baseline, (v) => {
       options.baseline = v;
       ctx.render();
@@ -104,6 +112,7 @@ export function renderGanttView(view, project) {
         today: ctx.data.today,
         showCritical,
         showBaseline,
+        showConflicts,
         multi: !project,
         build: (fn) => build(fn, ctx.collapsed),
       }),
@@ -116,7 +125,7 @@ export function renderGanttView(view, project) {
 
   const scroller = h('div', { class: 'chart-scroll', 'data-scroll-key': `gantt:${project?.id ?? 'all'}:${zoom}` });
   const legendColor = project ? colorFn(project.color) : colorFn('blue');
-  view.append(toolbar, ganttLegend(pal, legendColor, showCritical, showBaseline, links.some((l) => l.cross)), scroller);
+  view.append(toolbar, ganttLegend(pal, legendColor, showCritical, showBaseline, links.some((l) => l.cross), showConflicts && rows.some((r) => r.conflict)), scroller);
 
   const layout = layoutGantt({
     rows,
@@ -130,6 +139,7 @@ export function renderGanttView(view, project) {
     showWbs: !mobile,
     showCritical,
     showBaseline,
+    showConflicts,
     today: ctx.data.today,
     selectedTask: ctx.taskId, // on screen only: exports draw their own charts
     range: heldRange(held),
@@ -366,15 +376,21 @@ export function renderTimelineView(view, project) {
   const pal = PALETTES[mode];
   const colorFn = (name) => projectColor(name, mode);
   const scope = ctx.timelineScope;
-  const build = (fn) => (project ? projectGroups(project, scope, fn) : portfolioGroups(ctx.data, scope, fn));
+  const build = (fn) => (project ? projectGroups(project, scope, fn, ctx.data) : portfolioGroups(ctx.data, scope, fn));
   const groups = build(colorFn);
   const hasItems = groups.some((g) => g.items.length);
+  const showConflicts = ctx.timelineConflicts;
+  const anyConflict = showConflicts && groups.some((g) => g.items.some((i) => i.conflict));
 
   const toolbar = h('div', { class: 'toolbar', style: { marginBottom: '10px' } },
     seg([['key', 'Key items'], ['all', 'All tasks']], scope, (s) => {
       ctx.timelineScope = s;
       ctx.render();
     }, 'Timeline scope'),
+    checkbox('Conflicts', showConflicts, (v) => {
+      ctx.timelineConflicts = v;
+      ctx.render();
+    }),
     h('span', { class: 'small muted', style: { flexBasis: ctx.isMobile() ? '100%' : 'auto' } }, 'Key items are milestones, top-level phases and tasks marked "Show on timeline".'),
     h('span', { class: 'spacer' }),
     h('button', {
@@ -387,6 +403,7 @@ export function renderTimelineView(view, project) {
         subtitle: subtitleFor(project),
         today: ctx.data.today,
         multi: !project,
+        showConflicts,
         build,
       }),
     }, icon('image'), 'Copy for PowerPoint'));
@@ -397,10 +414,10 @@ export function renderTimelineView(view, project) {
   }
 
   const card = h('div', { class: 'card chart-card', 'data-scroll-key': `timeline:${project?.id ?? 'all'}`, style: { overflowX: 'auto' } });
-  view.append(toolbar, card);
+  view.append(toolbar, ...(anyConflict ? [h('div', { class: 'legend' }, conflictKey(pal))] : []), card);
   const width = Math.max(card.clientWidth - 10, 760);
   const layout = layoutTimeline({
-    groups, pal, text: makeText(SCREEN_FONT), width, today: ctx.data.today, legend: !project, selectedTask: ctx.taskId,
+    groups, pal, text: makeText(SCREEN_FONT), width, today: ctx.data.today, legend: !project, selectedTask: ctx.taskId, showConflicts,
   });
   const svg = renderSvg(layout.primitives, { width: layout.width, height: layout.height, background: pal.surface, label: 'Timeline' });
   svg.style.maxWidth = 'none';

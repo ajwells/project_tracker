@@ -24,11 +24,24 @@ const projectFinishes = (tasks, projects) => projects.map((p) => p.tasks
   .filter((t) => !tasks.get(t.id).isSummary)
   .map((t) => tasks.get(t.id).end).sort().at(-1));
 
-// Checks every open task against what actually happens when it slips.
+// Every broken link and by how much, as "task<-predecessor:buffer", leaving out those on
+// one task.
+const brokenLinks = (tasks, projects, except) => projects.flatMap((p) => p.tasks)
+  .filter((t) => t.id !== except && !tasks.get(t.id).isSummary)
+  .flatMap((t) => {
+    const c = tasks.get(t.id);
+    return c.conflicts.map((pred) => `${t.id}<-${pred}:${c.links.find((l) => l.taskId === pred)?.buffer}`);
+  })
+  .sort();
+// Total days those links are short by.
+const shortBy = (broken) => broken.reduce((sum, entry) => sum - Number(entry.split(':').at(-1)), 0);
+
+// Checks every open task against what actually happens when it slips. A slip matters
+// when it moves a project's finish or breaks a link into a task that won't move for it.
+// Negative float is how far a task must come earlier to mend the links it breaks.
 function assertMatchesSlips(projects, label) {
   const result = computeSchedule(projects, TODAY, STANDARD);
   if (result.cycle) return 0;
-  const finishes = projectFinishes(result.tasks, projects);
   let checked = 0;
   for (const p of projects) {
     const cal = makeCalendar(p.calendar);
@@ -41,13 +54,30 @@ function assertMatchesSlips(projects, label) {
         moved.start = toIso(cal.add(toDayNumber(c.start), days));
         moved.startSet = true;
         if (moved.trackBy === 'dates') moved.finish = toIso(cal.add(toDayNumber(c.end), days));
-        return projectFinishes(computeSchedule(copy, TODAY, STANDARD).tasks, copy);
+        const tasks = computeSchedule(copy, TODAY, STANDARD).tasks;
+        // A task tracked by dates can break its own links by coming earlier, which isn't
+        // what its float measures.
+        return { start: tasks.get(t.id).start, finishes: projectFinishes(tasks, copy), broken: brokenLinks(tasks, copy, t.id) };
       };
       const where = `${label}: ${t.id}, float ${c.float}`;
-      assert.ok(c.float >= 0, `negative float, ${where}`);
-      assert.equal(c.critical, c.float === 0, where);
-      assert.deepEqual(slipped(c.float), finishes, `slipping by its float moved a finish, ${where}`);
-      assert.notDeepEqual(slipped(c.float + 1), finishes, `one day past its float moved nothing, ${where}`);
+      assert.equal(c.critical, c.float <= 0, where);
+      const now = slipped(0);
+      const effect = ({ finishes, broken }) => ({ finishes, broken });
+      if (c.float >= 0) {
+        assert.deepEqual(effect(slipped(c.float)), effect(now), `slipping by its float moved a finish or broke a link, ${where}`);
+        assert.notDeepEqual(effect(slipped(c.float + 1)), effect(now), `one day past its float did nothing, ${where}`);
+      } else {
+        // It breaks a link into a task that won't move. Coming earlier by its float makes
+        // that link less short, unless its own links hold it where it is. It may not mend
+        // it, since another subtask of a summary can be breaking the same link, and coming
+        // earlier still can help a task further on that shows its own negative float.
+        assert.ok(now.broken.length > 0, `negative float with no broken link, ${where}`);
+        const at = slipped(c.float);
+        if (at.start === toIso(cal.add(toDayNumber(c.start), c.float))) {
+          assert.ok(shortBy(at.broken) < shortBy(now.broken), `coming earlier by its float mended nothing, ${where}`);
+          assert.notDeepEqual(slipped(c.float + 1).broken, at.broken, `one day short of its float mended as much, ${where}`);
+        }
+      }
       checked++;
     }
   }
@@ -137,6 +167,45 @@ test('to make a task hold up another by 30 days, link it the other way round', (
     task('test1', { startSet: false, duration: 4, deps: [dep('test2', 'FS', 30)] }),
   ]));
   assert.deepEqual(flags(tasks, 'test1', 'test2'), { test1: [0, true], test2: [0, true] });
+});
+
+// ---- links into tasks that won't move -----------------------------------------------------
+
+test('a task feeding a fixed-date task has no more float than that link allows', () => {
+  // The CSP V3 plan: Flight Test 2 has fixed dates and ends the project, Aircraft
+  // Integration must finish before it starts, and so must Flight Orders.
+  const cal = { durationUnit: 'calendar' };
+  const lag = (taskId) => ({ ...dep(taskId), lagUnit: 'calendar' });
+  const tasks = schedule(project('p', [
+    task('phase', { startSet: false }),
+    task('ft2', { ...cal, parentId: 'phase', start: '2027-01-20', trackBy: 'dates', finish: '2027-01-29', duration: 10, manual: true, deps: [lag('orders'), lag('integration')] }),
+    task('integration', { ...cal, parentId: 'phase', start: '2027-01-18', duration: 2, manual: true }),
+    task('orders', { ...cal, parentId: 'phase', start: '2026-11-30', duration: 14, manual: true }),
+  ]));
+  // Before, both were measured against the project finish: 10 and 47 days.
+  assert.deepEqual(flags(tasks, 'integration', 'orders', 'ft2'), { integration: [0, true], orders: [37, false], ft2: [0, true] });
+});
+
+for (const [label, fields] of [['set by hand', { manual: true }], ['tracked by dates', { trackBy: 'dates', finish: '2026-06-12' }]]) {
+  test(`a task breaking a link into a task ${label} has negative float`, () => {
+    const tasks = schedule(project('p', [
+      task('A', { duration: 10 }), // Jun 1 to 12
+      task('B', { start: '2026-06-08', duration: 5, ...fields, deps: [dep('A')] }),
+      task('C', { duration: 30 }), // ends the project, so B has room of its own
+    ]));
+    assert.deepEqual(tasks.get('B').conflicts, ['A']);
+    // A must finish by Jun 5 for B to start on Jun 8: it is 5 working days behind.
+    assert.deepEqual(flags(tasks, 'A'), { A: [-5, true] });
+  });
+}
+
+test('a complete task no longer limits the tasks before it', () => {
+  const tasks = schedule(project('p', [
+    task('A', { duration: 10 }),
+    task('B', { start: '2026-06-08', duration: 5, manual: true, status: 'complete', progress: 100, deps: [dep('A')] }),
+    task('C', { duration: 30 }),
+  ]));
+  assert.deepEqual(flags(tasks, 'A'), { A: [20, false] });
 });
 
 // ---- how much room a link has -----------------------------------------------------------
