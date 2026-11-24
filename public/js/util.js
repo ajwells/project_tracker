@@ -276,8 +276,15 @@ export function openDialog({ title, body, footer, wide = false, onClose }) {
     dialog.remove();
     onClose?.();
   });
+  // A click on the backdrop closes it. A press that starts inside, such as selecting text
+  // and letting go past the edge, also reaches the dialog as a click, so it must not count.
+  let pressedOutside = false;
+  dialog.addEventListener('pointerdown', (event) => {
+    pressedOutside = event.target === dialog;
+  });
   dialog.addEventListener('click', (event) => {
-    if (event.target === dialog) close();
+    if (event.target === dialog && pressedOutside) close();
+    pressedOutside = false;
   });
   document.body.append(dialog);
   dialog.showModal();

@@ -262,6 +262,122 @@ test('random plans mixing units, calendars and links match real slips', () => {
   assert.ok(checked > 1500, `checked ${checked}`);
 });
 
+// ---- calendar days that skip holidays ------------------------------------------------------
+
+// Nov 4 (Wednesday) is a holiday. Nov 7 and 8 are a weekend, which calendar days still count.
+const SKIP = { holidays: ['2026-11-04'], calendarDaysSkipHolidays: true };
+
+test('with the setting on, a calendar duration skips holidays but runs through the weekend', () => {
+  const tasks = schedule([project('p', [task('cal', { duration: 7, durationUnit: 'calendar', start: '2026-11-03' })], SKIP)]);
+  // Nov 3, then 5 to 10: seven days, missing only the 4th.
+  assert.deepEqual(dates(tasks, 'cal'), ['2026-11-03', '2026-11-10']);
+  assert.equal(tasks.get('cal').duration, 7);
+});
+
+test('with the setting on, a calendar task set to start on a holiday starts the next day', () => {
+  const tasks = schedule([project('p', [task('cal', { duration: 2, durationUnit: 'calendar', start: '2026-11-04' })], SKIP)]);
+  assert.deepEqual(dates(tasks, 'cal'), ['2026-11-05', '2026-11-06']);
+});
+
+test('with the setting on, a calendar lag skips the waiting project\'s holidays only', () => {
+  // A ends Friday Nov 6. Three calendar days on lands on Nov 9, plus one for the holiday
+  // on the 9th in the waiting project. A holiday in A's project doesn't count.
+  const plan = (down) => schedule([
+    project('up', [task('A')], { holidays: ['2026-11-10'], calendarDaysSkipHolidays: true }),
+    project('down', [task('B', { duration: 1, durationUnit: 'calendar', startSet: false, deps: [dep('A', 'FS', 3, 'calendar')] })], down),
+  ]).get('B').start;
+  assert.equal(plan({ holidays: ['2026-11-09'] }), '2026-11-10');
+  assert.equal(plan({ holidays: ['2026-11-09'], calendarDaysSkipHolidays: true }), '2026-11-11');
+});
+
+test('the setting leaves working days, milestones and plans without holidays alone', () => {
+  const plan = (calendar) => schedule([project('p', [
+    task('work', { duration: 5, start: '2026-11-02' }),
+    task('gate', { milestone: true, duration: 0, start: '2026-11-04', durationUnit: 'calendar' }),
+    task('cal', { duration: 5, durationUnit: 'calendar', start: '2026-11-02' }),
+  ], calendar)]);
+  const on = plan(SKIP);
+  const off = plan({ holidays: SKIP.holidays });
+  assert.deepEqual(dates(on, 'work'), dates(off, 'work'));
+  assert.deepEqual(dates(on, 'gate'), dates(off, 'gate'));
+  assert.notDeepEqual(dates(on, 'cal'), dates(off, 'cal'));
+  // Turned on with no holidays, it's plain calendar days.
+  assert.deepEqual(dates(plan({ calendarDaysSkipHolidays: true }), 'cal'), dates(plan({}), 'cal'));
+});
+
+test('with the setting on, float and buffers skip holidays and are still in calendar days', () => {
+  // A runs Nov 2 to 6, and B is held to start Nov 12 on an FS link. The days between are
+  // Nov 7 to 11, five calendar days, less the holiday on the 9th.
+  const tasks = schedule([project('p', [
+    task('A', { duration: 5, durationUnit: 'calendar' }),
+    task('B', { start: '2026-11-12', duration: 30, durationUnit: 'calendar', deps: [dep('A', 'FS', 0, 'calendar')] }),
+  ], { holidays: ['2026-11-09'], calendarDaysSkipHolidays: true })]);
+  assert.equal(tasks.get('A').float, 4);
+  assert.deepEqual(tasks.get('B').links, [{ taskId: 'A', buffer: 4, firm: false, unit: 'calendar' }]);
+});
+
+test('with the setting on, a task tracked by dates counts its span without the holidays', () => {
+  const tasks = schedule([project('p', [
+    task('cal', { durationUnit: 'calendar', trackBy: 'dates', start: '2026-11-02', finish: '2026-11-08', startSet: true }),
+  ], SKIP)]);
+  assert.deepEqual(dates(tasks, 'cal'), ['2026-11-02', '2026-11-08']);
+  assert.equal(tasks.get('cal').duration, 6);
+});
+
+test('random plans with calendar days that skip holidays match real slips', () => {
+  let seed = 20261123;
+  const random = (n) => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return Math.floor((seed / 4294967296) * n);
+  };
+  const pick = (list) => list[random(list.length)];
+  const holidays = ['2026-11-11', '2026-11-14', '2026-11-27', '2026-11-28', '2026-12-25'];
+  let checked = 0;
+  for (let round = 0; round < 400; round++) {
+    const calendars = [{ holidays, calendarDaysSkipHolidays: true }, pick([{}, { holidays }, { holidays, calendarDaysSkipHolidays: true }])];
+    const tasksOf = [[], []];
+    const everyTask = [];
+    const count = 3 + random(6);
+    for (let i = 0; i < count; i++) {
+      const deps = everyTask.length && random(4) ? [dep(pick(everyTask), pick(TYPES), pick([-20, -7, -2, 0, 1, 4, 11]), pick(UNITS))] : [];
+      const made = task(`t${i}`, {
+        start: toIso(toDayNumber('2026-11-02') + random(30)),
+        duration: 1 + random(12),
+        durationUnit: pick(UNITS),
+        startSet: deps.length && random(2) === 0 ? false : undefined,
+        deps,
+      });
+      tasksOf[random(2)].push(made);
+      everyTask.push(made.id);
+    }
+    const plan = [project('a', tasksOf[0], calendars[0]), project('b', tasksOf[1], calendars[1])].filter((p) => p.tasks.length);
+    checked += assertMatchesSlips(plan, `round ${round}`);
+  }
+  assert.ok(checked > 1500, `checked ${checked}`);
+});
+
+test('the setting is saved only when on, survives export and import, and moves tasks with history', () => {
+  const s = store();
+  const projectId = s.createProject({ name: 'P', defaultDayUnit: 'calendar', calendar: { holidays: ['2026-11-04'] } });
+  s.createTask(projectId, { name: 'A', start: '2026-11-03', duration: 3 });
+  const a = tasksOf(s)[0];
+  assert.equal('calendarDaysSkipHolidays' in s.snapshot().projects[0].calendar, false);
+  assert.equal(tasksOf(s)[0].schedEnd, '2026-11-05');
+
+  s.updateProject(projectId, { calendar: { holidays: ['2026-11-04'], calendarDaysSkipHolidays: true } });
+  assert.equal(s.snapshot().projects[0].calendar.calendarDaysSkipHolidays, true);
+  assert.equal(tasksOf(s)[0].schedEnd, '2026-11-06');
+  assert.match(tasksOf(s)[0].history.at(-1).note, /project calendar/);
+
+  const again = store();
+  again.importAll(structuredClone(s.exportAll()), 'replace');
+  assert.equal(again.snapshot().projects[0].calendar.calendarDaysSkipHolidays, true);
+  assert.equal(tasksOf(again).find((t) => t.id === a.id).schedEnd, '2026-11-06');
+
+  s.updateProject(projectId, { calendar: { holidays: ['2026-11-04'], calendarDaysSkipHolidays: false } });
+  assert.equal('calendarDaysSkipHolidays' in s.snapshot().projects[0].calendar, false);
+});
+
 // ---- saving ---------------------------------------------------------------------------
 
 const store = () => {

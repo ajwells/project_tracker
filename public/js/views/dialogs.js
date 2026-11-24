@@ -14,7 +14,8 @@ export function openProjectDialog(project = null) {
   const owner = h('input', { type: 'text', value: project?.owner ?? '', maxlength: 100, list: 'owner-names', autocomplete: 'off' });
   const description = h('textarea', { rows: 2, maxlength: 2000 }, project?.description ?? '');
   const weekends = h('input', { type: 'checkbox', checked: !!project?.calendar?.workWeekends });
-  const holidays = h('textarea', { rows: 2, placeholder: '2026-12-25, 2027-01-01' }, (project?.calendar?.holidays ?? []).join(', '));
+  const holidays = h('textarea', { name: 'holidays', rows: 2, placeholder: '2026-12-25, 2027-01-01' }, (project?.calendar?.holidays ?? []).join(', '));
+  const skipHolidays = h('input', { type: 'checkbox', name: 'calendarDaysSkipHolidays', checked: !!project?.calendar?.calendarDaysSkipHolidays });
   const dayUnit = h('select', { name: 'defaultDayUnit' },
     h('option', { value: 'working', selected: project?.defaultDayUnit !== 'calendar' }, 'Working days'),
     h('option', { value: 'calendar', selected: project?.defaultDayUnit === 'calendar' }, 'Calendar days'));
@@ -43,7 +44,7 @@ export function openProjectDialog(project = null) {
       name: name.value,
       owner: owner.value,
       description: description.value,
-      calendar: { workWeekends: weekends.checked, holidays: dates },
+      calendar: { workWeekends: weekends.checked, holidays: dates, calendarDaysSkipHolidays: skipHolidays.checked },
       defaultDayUnit: dayUnit.value,
       ...(color ? { color } : {}),
     };
@@ -84,6 +85,8 @@ export function openProjectDialog(project = null) {
       h('h3', {}, 'Working calendar'),
       h('label', { class: 'check' }, weekends, h('span', {}, 'Work on weekends')),
       field('Holidays (YYYY-MM-DD, separated by commas)', holidays),
+      h('label', { class: 'check' }, skipHolidays, h('span', {}, 'Calendar days skip holidays',
+        h('small', {}, 'Calendar-day durations and lags count every day except these holidays. Weekends still count. Tasks counting calendar days move when you change this.'))),
       field('New tasks and links count', dayUnit),
       h('p', { class: 'small muted' }, 'Existing tasks and links keep what they count. You can still change any task or link on its own.'),
       project?.baseline ? h('div', { class: 'row', style: { justifyContent: 'space-between' } },

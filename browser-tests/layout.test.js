@@ -4,7 +4,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONCURRENCY, click, launchBrowser, openApp, openTask, pressText, project, savedTask, soon, task, type,
+  CONCURRENCY, click, launchBrowser, openApp, openTask, pause, pressText, project, savedProjects, savedTask, soon, task, type,
 } from './helpers.js';
 
 const projects = () => [
@@ -567,6 +567,52 @@ describe('the task panel and the page', { concurrency: CONCURRENCY }, () => {
     await page.waitForSelector('dialog [name=defaultDayUnit]');
     assert.equal(await page.$eval('dialog [name=defaultDayUnit]', (el) => el.value), 'calendar');
     assert.match(await page.$eval('dialog', (d) => d.textContent), /Existing tasks and links keep what they count/);
+  });
+
+  scenario('calendar days can be set to skip holidays, and the dialog shows it saved', WIDE, '#/p/proj/tasks', async (page) => {
+    const open = async () => {
+      await page.click('[aria-label="Project settings"]');
+      await page.waitForSelector('dialog [name=calendarDaysSkipHolidays]');
+    };
+    await page.waitForSelector('[aria-label="Project settings"]');
+    await open();
+    assert.equal(await page.$eval('dialog [name=calendarDaysSkipHolidays]', (el) => el.checked), false);
+    assert.match(await page.$eval('dialog', (d) => d.textContent), /Calendar-day durations and lags count every day except these holidays\. Weekends still count\./);
+    await page.$eval('dialog [name=holidays]', (el) => { el.value = '2026-12-24, 2026-12-25'; });
+    await page.click('dialog [name=calendarDaysSkipHolidays]');
+    await page.click('dialog [data-action=save-project]');
+    await soon(async () => assert.equal(await page.$('dialog[open]'), null));
+    await soon(async () => {
+      const project = (await savedProjects(page)).find((p) => p.id === 'proj');
+      assert.deepEqual(project.calendar, { workWeekends: false, holidays: ['2026-12-24', '2026-12-25'], calendarDaysSkipHolidays: true });
+    });
+    await open();
+    assert.equal(await page.$eval('dialog [name=calendarDaysSkipHolidays]', (el) => el.checked), true);
+    await page.click('dialog [name=calendarDaysSkipHolidays]');
+    await page.click('dialog [data-action=save-project]');
+    await soon(async () => {
+      const project = (await savedProjects(page)).find((p) => p.id === 'proj');
+      assert.equal('calendarDaysSkipHolidays' in project.calendar, false);
+    });
+  });
+
+  scenario('highlighting text in a dialog and letting go past its edge leaves it open', WIDE, '#/p/proj/tasks', async (page) => {
+    await openTask(page, 'pred'); // as reported: the task panel open too
+    await page.click('[aria-label="Project settings"]');
+    await page.waitForSelector('dialog[open] [name=holidays]');
+    await page.$eval('dialog [name=holidays]', (el) => { el.value = '2026-12-24, 2026-12-25'; });
+    const isOpen = () => page.evaluate(() => !!document.querySelector('dialog[open]'));
+    const field = await page.$eval('dialog [name=holidays]', (el) => { const b = el.getBoundingClientRect(); return { x: b.left + 6, y: b.top + 14 }; });
+    const right = await page.$eval('dialog', (el) => el.getBoundingClientRect().right);
+    await page.mouse.move(field.x, field.y);
+    await page.mouse.down();
+    await page.mouse.move(right + 12, field.y, { steps: 8 });
+    await page.mouse.up();
+    await pause(200);
+    assert.equal(await isOpen(), true, 'the highlight closed the dialog');
+    // A plain click outside still closes it.
+    await page.mouse.click(right + 12, field.y);
+    await soon(async () => assert.equal(await isOpen(), false));
   });
 
   scenario('the cross-project dialog starts on the waiting project\'s default', WIDE, '#/p/proj/tasks', async (page) => {

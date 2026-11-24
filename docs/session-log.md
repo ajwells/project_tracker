@@ -2,15 +2,16 @@
 
 Context for future working sessions: what was built, what broke, and why the app works the way it does. For how to use the app, see `README.md`. The code wins if this log disagrees with it.
 
-Covers the sessions of 2026-11-01 to 2026-11-22. Add new sessions at the end.
+Covers the sessions of 2026-11-01 to 2026-11-23. Add new sessions at the end.
 
-## Current state (2026-11-22)
+## Current state (2026-11-23)
 
-- **Last commit:** `db64154`, action items. `88f73c0` before it has the date change preview. The user made both commits.
-- **Not committed:** float into fixed-date tasks and conflict marks on the charts (2026-11-22), and this log. `project-tracker-export-2026-11-23.json` (the user's CSP V3 plan) is untracked.
+- **Last commit:** `ec6e3ad`, float into fixed-date tasks and conflict marks on the charts (2026-11-22). The user made it, and it also removed `project-tracker-export-2026-11-02.json` from the repo.
+- **Not committed:** the "Calendar days skip holidays" setting (2026-11-23), its tests and README entry, the fix for dialogs closing after a highlight (`openDialog` in `util.js`), and these updates to the log.
+- **The user's plans:** exports live in `debug/`, which is in `.gitignore`. `debug/project-tracker-export-2026-11-23.json` is the CSP V3 plan, and `debug/project-tracker-export-2026-11-02.json` the earlier test plan. Reproduce questions on these.
 - **Tests:**
-  - `npm test`: 265 pass.
-  - `npm run test:browser`: 203 pass in about 25s.
+  - `npm test`: 273 pass.
+  - `npm run test:browser`: 205 pass in about 20s.
 - **Running servers:** none on port 3000 as of 2026-11-22. The server serves `public/` from disk, so client changes only need a tab reload, but `public/shared/` also runs in the server, so it needs a restart after scheduler changes when `SAVE_DATA` is on. Port 5173 is the user's separate Needlepoint Tracker project, not part of this app. Leave it alone.
 
 ## Problems to handle
@@ -20,16 +21,17 @@ Found 2026-11-22 and deliberately left for later. Details are in that session's 
 1. **Too much float when a summary's subtasks are linked to each other.** The SS and SF rule in the backward pass (`scheduler.js`, "A summary starts with its first subtask") takes the summary's other subtasks to stay put while one slips. If one of them is linked after the slipping subtask, it moves along, and the slip reaches the link after all. This was already broken before 2026-11-22.
    - Reproduce: random plan 451 with summary tasks (`randomPlan(451, { summaries: true })` in `test/critical-path.test.js`). t2 reports 60 days, and slipping it 60 moves the finish.
    - Tried and backed out: ignoring subtasks linked after the slipping one. That gave tasks negative float with nothing broken (plan 114), and narrowing the rule broke plan 935. A fix probably needs to work out where a linked subtask would actually be pushed.
-2. **Float a little short across calendars.** A predecessor of a task that's already behind is measured against that task's position. When that task's project works weekends and the broken link counts working days, the first days of push can land on a weekend that the link doesn't count, so the float comes out up to a weekend short. It's never too long.
-   - Reproduce: random plan 923 with every option (`calendars: [{}, { workWeekends: true }], summaries: true, dates: true`). t0 reports 9 days, and the link only gets worse from day 12.
+2. **Float a little short when calendars differ.** A predecessor of a task that's already behind is measured against that task's position. When the two sides of the broken link have different days off, the first days of push can land on days the link doesn't count, so the float comes out short by those days. It's never too long. Different days off means a weekend one project works and the other doesn't, a holiday in only one project, or a calendar-day task or lag against working days.
+   - Reproduce: random plan 923 with every option (`calendars: [{}, { workWeekends: true }], summaries: true, dates: true`). t0 reports 9 days, and the link only gets worse from day 12, because days 10 and 11 land on a weekend. No case with holidays has been reproduced yet, and none has been looked for: the random "holidays" plans have no fixed-date tasks, so they can't reach it. Adding `dates: true` to that kind would.
 3. **The task that's too late isn't at risk.** On the Tasks page and the overview, only the fixed task shows "At risk". The task that has to move shows "On track", though the panel and charts say it's behind. Likely fix: `healthOf` in `scheduler.js` treats negative float as at risk. Check the overview's at-risk list and the project card counts afterwards.
 4. **No red arrow for a link on a summary.** When a link sits on a summary and one of its subtasks breaks it, the arrow stays normal, because the conflict is recorded on the subtask (`brokenLink` in `chart/gantt.js`). The badge still shows on the subtask.
 5. **Negative float is checked loosely.** The brute-force check can't confirm the amount, because moving one task can be held up by another task's set start. Only hand-worked tests check the amounts. A stronger check would move the task together with what it drives.
 6. **Not tested:** the PowerPoint file with conflict badges opened in PowerPoint, conflict marks on phones, and the portfolio Gantt with conflicts.
+7. **Intermittent browser test failure:** "typing -2 after a double click saves -2" (`browser-tests/scheduling.test.js`, server storage) failed once in 4 full runs on 2026-11-23, then passed 12 times alone and in 3 more full runs. It double-clicks the lag field and types, with no dialog involved, so it isn't the dialog change made that day. The data-loss bug in the bug table also first showed as one rare failure, so look into it: run it in a loop under load with a per-test limit, as the Testing decisions describe.
 
 **Finding more:** the suite tries 200 random plans per kind, which misses items 1 and 2. To run 5,000, copy the test with `sed 's/seed <= 200;/seed <= 5000;/' test/critical-path.test.js > test/zz-stress.tmp.test.js`, run it with `node --test`, then delete the copy. It takes about a minute. Items 1 and 2 are the only failures expected.
 
-Older open items (security, `PORT` checks, mixed day units in summaries and progress, the tracked 2026-11-02 export, edits that skip the date preview) are under **Open items** further down and in the 2026-11-03 session.
+Older open items (security, `PORT` checks, mixed day units in summaries and progress, edits that skip the date preview) are under **Open items** further down and in the 2026-11-03 session.
 
 ## Environment
 
@@ -114,6 +116,7 @@ Older open items (security, `PORT` checks, mixed day units in summaries and prog
 | Timeline dots 2px off the line | Pseudo-element is content-box | Corrected offsets |
 | **Link edits overwriting each other (data loss)** | Each save sends the task's whole link list, built from the last loaded data, so a second edit before the first returned undid it. Server storage on a slow connection only | Edits queue and apply to the saved list (`editLinks` in `drawer.js`). The panel shows pending edits on top |
 | A calendar link resent without a unit became working days | Missing unit treated as working | An existing link keeps its unit. A new one takes the project default |
+| A dialog closed when highlighting text and letting go past its edge (2026-11-23). Reported as project settings closing while highlighting a holiday with the task panel open | A press that starts inside and is released on the backdrop reaches the dialog as a click, and any click on the dialog itself closed it. The panel doesn't matter: it happens alone too | `openDialog` closes only when the press also started on the backdrop |
 
 | **Browser test run could hang forever** | A restarting test server found its port taken, and its group's cleanup then stopped the already-stopped server. `stop()` checked only `exitCode`, but a killed process reports `signalCode` instead, including on Windows, so it waited for an exit that had already happened | `stop()` checks both. Restarting servers use ports below the system's handout range, and retry briefly if theirs is still busy |
 | A test leaving a server running kept the test process alive | Open child process handles | `--test-force-exit` and `--test-timeout=300000` in `test:browser`, and leftover servers are killed on exit |
@@ -158,6 +161,7 @@ The link data-loss bug showed up as one rare test failure. A test that holds sav
   - A working lag always lands on a working day, even for a calendar-duration task. To start curing concrete on a Saturday, both the duration and the lag must be calendar.
 - **Switching units:** tracked by duration keeps the number and moves dates. Tracked by dates keeps dates and changes the number.
 - **Units for float and buffer:** float uses the task's unit. A buffer is calendar if the lag or the task's duration is, because working days can't measure a task running through days off.
+- **Holidays and float:** holidays are per project and count only where working days do, unless the project has **Calendar days skip holidays** on (2026-11-23 session). A working-day task's float skips its own project's holidays and weekends. A calendar-day task's float counts every day, or every day but holidays with the setting on, so without it holidays change it only by moving its dates. A link's lag counts on the waiting task's project calendar, and the predecessor's float on its own. Checked on the CSP V3 plan on 2026-11-23: adding Dec 24, Dec 25, Dec 31 and Jan 1 as holidays changed nothing in calendar days, and in working days took Raytheon Flight Orders from 23 to 19.
 - **Milestones** always use working days.
 - **Project default (`defaultDayUnit`):**
   - One setting covers both durations and lags, to keep settings simple.
@@ -197,7 +201,7 @@ The link data-loss bug showed up as one rare test failure. A test that holds sav
 - There's no `HOST` variable for binding to one address.
 - A summary's float is the lowest among its subtasks even with mixed units, and is labeled just "days". A summary's duration is always working days.
 - Progress weighting mixes working and calendar durations.
-- `project-tracker-export-2026-11-02.json` is tracked in git since `76763b5`. It's the user's test plan, and they may not want it in the repo.
+- ~~`project-tracker-export-2026-11-02.json` is tracked in git since `76763b5`.~~ The user removed it in `ec6e3ad` and moved their exports to the ignored `debug/` folder. It's still in git history before that commit.
 
 ### Not tested
 
@@ -313,9 +317,31 @@ The user asked why Aircraft Integration in their CSP V3 plan had 10 days of floa
 
 ### Open items
 
-- **Summary subtasks linked to each other:** the SS and SF rule takes the summary's other subtasks to stay put, which fails when one is linked after the slipping one and moves with it. Random plan 451 (summary tasks) over-reports float, and the committed code before this session does the same. The suite runs 200 plans per kind, so it doesn't reach it. An attempt to fix it caused other errors and was backed out.
-- **Days off across calendars:** a predecessor's float into a task already behind can be up to a weekend short when that task's project works weekends and the broken link counts working days (random plan 923, all of it). It is never too long.
-- **Negative float is checked loosely** by brute force, because moving one task can be held up by another task's set start. Hand-worked tests check the amounts.
-- **Health:** the task that's too late stays "On track" on the Tasks page. Only the fixed task shows "At risk". Making it at risk too is open.
-- **A link on a summary** whose subtask breaks it doesn't get the red arrow, since the conflict sits on the subtask. The badge still shows.
-- **Not tested:** the PowerPoint file with the badge opened in PowerPoint, conflict marks on phones, and the portfolio Gantt with conflicts.
+All moved to **Problems to handle** near the top of this log, so there's one list to keep up to date.
+
+## Session of 2026-11-23: calendar days that skip holidays
+
+The user asked why TU/EU Checkout at Crane in the CSP V3 plan had 10 days of float despite holidays Dec 19 to 27. Every task and link in that plan counts calendar days, which ran through holidays, so the holidays changed nothing. Slipping Crane 10 days moved nothing, and 11 broke the link into Aircraft Integration, so the float was right. The user then asked for an option for a calendar-day project to use holidays too.
+
+### How it works
+
+- **Setting:** `project.calendar.calendarDaysSkipHolidays`, a box labeled **Calendar days skip holidays** under Holidays in project settings. Stored only when on, so older plans and exports are unchanged, and the export format and `SCHEMA_VERSION` are unchanged.
+- **Scheduler:** `makeCalendar` now gives each project calendar a `calendarDays` clock. It's the shared every-day clock, or with the setting on and at least one holiday, a clock of every day but the holidays. `durationClock`, `lagClock` and the buffer clock use it, so durations, lags, float and buffers all follow. Calendar-unit clocks are recognized by a `calendarUnit` flag rather than by being the one every-day clock.
+- **Store:** `cleanCalendar` keeps the flag. A calendar change already reschedules and records "Rescheduled after a change to the project calendar", so nothing else was needed.
+- **CSP V3 with the setting on:** Crane runs Dec 11 to Jan 2 and has 1 day of float. Nothing breaks.
+
+### Decisions
+
+- **Weekends still count.** The setting only takes holidays out of calendar days. Every day except holidays for working days too is what **Work on weekends** already does.
+- **One setting covers durations and lags,** like the day unit default, to keep settings simple.
+- **A calendar lag counts the waiting task's project's holidays,** as a working lag counts its calendar. A calendar-day task counts its own project's.
+- **Milestones and working days are unaffected.**
+- **Labels still say "calendar days"** with the setting on.
+- **Changing the setting moves tasks without the date preview,** like any other calendar change.
+
+### Testing
+
+- `test/day-units.test.js`: 8 new tests. They cover durations, a start set on a holiday, lags across two projects, what the setting leaves alone, float and buffers, dates-tracked spans, 400 random plans checked against real slips, and the store (saved only when on, export and import, rescheduling with history).
+- `browser-tests/layout.test.js`: the box saves, shows as saved when reopened, and clears.
+- Breakage checks: 5 of 5 caught (setting ignored, lags ignoring it, buffer unit judged by clock identity, buffers counted through holidays, the store dropping it).
+- Screenshot of the settings dialog with the CSP V3 plan.

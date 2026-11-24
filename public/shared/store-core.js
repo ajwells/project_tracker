@@ -97,6 +97,8 @@ function cleanCalendar(value) {
   if (holidays.length > 1000) throw bad('A calendar can hold at most 1000 holidays.');
   const clean = [...new Set(holidays.map((d) => cleanDate(d, 'Holiday')))].sort();
   const calendar = { workWeekends: !!value.workWeekends, holidays: clean };
+  // Stored only when on, so older plans and exports are unchanged.
+  if (value.calendarDaysSkipHolidays) calendar.calendarDaysSkipHolidays = true;
   // A calendar with no working days could never schedule anything.
   const cal = makeCalendar(calendar);
   let found = false;

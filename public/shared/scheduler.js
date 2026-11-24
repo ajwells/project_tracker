@@ -43,9 +43,18 @@ export function toIso(dayNumber) {
   return new Date(dayNumber * DAY_MS).toISOString().slice(0, 10);
 }
 
+// A project's working calendar. Its `calendarDays` is what calendar-day durations and lags
+// count on: every day, or every day but the holidays when the project asks for that.
 export function makeCalendar(calendar = {}) {
   const holidays = new Set((calendar.holidays || []).filter(isValidDate).map(toDayNumber));
-  const workWeekends = !!calendar.workWeekends;
+  const clock = makeClock(holidays, !!calendar.workWeekends);
+  clock.calendarDays = calendar.calendarDaysSkipHolidays && holidays.size
+    ? { ...makeClock(holidays, true), calendarUnit: true }
+    : EVERY_DAY;
+  return clock;
+}
+
+function makeClock(holidays, workWeekends) {
   const isWork = (n) => {
     if (holidays.has(n)) return false;
     if (workWeekends) return true;
@@ -88,11 +97,11 @@ export function makeCalendar(calendar = {}) {
   return { isWork, next, prev, add, count, diff };
 }
 
-const EVERY_DAY = makeCalendar({ workWeekends: true });
+const EVERY_DAY = { ...makeClock(new Set(), true), calendarUnit: true };
 
 // What a task's duration counts on. A milestone has no duration, so it keeps to working days.
-export const durationClock = (task, cal) => (task.durationUnit === 'calendar' && !task.milestone ? EVERY_DAY : cal);
-const lagClock = (dep, cal) => (dep.lagUnit === 'calendar' ? EVERY_DAY : cal);
+export const durationClock = (task, cal) => (task.durationUnit === 'calendar' && !task.milestone ? cal.calendarDays : cal);
+const lagClock = (dep, cal) => (dep.lagUnit === 'calendar' ? cal.calendarDays : cal);
 
 const spanOf = (task) => (task.milestone ? 0 : Math.max(1, task.duration | 0) - 1);
 
@@ -362,10 +371,10 @@ export function computeSchedule(projects, todayIso, { firmLeads = true } = {}) {
   // or lag means a link's buffer is in calendar days.
   const bufferClock = (dep, id) => {
     const cal = calendars.get(byId.get(id).project.id);
-    const calendarDays = dep.lagUnit === 'calendar' || leavesOf(id).some((leaf) => dates.get(leaf).shape.clock === EVERY_DAY);
-    return calendarDays ? EVERY_DAY : cal;
+    const calendarDays = dep.lagUnit === 'calendar' || leavesOf(id).some((leaf) => dates.get(leaf).shape.clock.calendarUnit);
+    return calendarDays ? cal.calendarDays : cal;
   };
-  const bufferUnit = (dep, id) => (bufferClock(dep, id) === EVERY_DAY ? { unit: 'calendar' } : {});
+  const bufferUnit = (dep, id) => (bufferClock(dep, id).calendarUnit ? { unit: 'calendar' } : {});
 
   // Days a task sits past what a link needs. Negative means earlier than it
   // allows. A link on a summary applies to each subtask, so the tightest one counts,
