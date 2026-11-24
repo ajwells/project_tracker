@@ -731,7 +731,7 @@ test('every link in a random network is honoured, and no task is later than it h
 
 function storeWithTwoTasks(link = {}) {
   const store = new StoreCore();
-  const projectId = store.createProject({ name: 'P' });
+  const projectId = store.createProject({ name: 'P', planning: false });
   const a = store.createTask(projectId, { name: 'A', start: '2026-01-14', duration: 5 });
   const b = store.createTask(projectId, { name: 'B', start: '2024-06-03', duration: 3, ...link });
   const find = (id) => store.snapshot().projects[0].tasks.find((t) => t.id === id);
@@ -780,13 +780,15 @@ test('dependency types other than the four are refused, and the type defaults to
   assert.deepEqual(find(b).deps, [{ taskId: a, type: 'FS', lag: -1 }]);
 });
 
-test('changing the type or lag of a link reschedules and records it in history', () => {
+test('changing the type or lag of a link reschedules and records it in history', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const { store, a, b, find } = storeWithTwoTasks();
   store.updateTask(b, { deps: [{ taskId: a, type: 'FS', lag: -2 }], actor: 'Ana' });
   assert.equal(find(b).computed.start, '2026-01-19');
   let edit = find(b).history.findLast((h) => h.type === 'edit');
   assert.equal(edit.author, 'Ana');
   assert.match(edit.changes.find((c) => c.field === 'deps').to, /^A \(FS-2d\)$/);
+  t.mock.timers.tick(11 * 60 * 1000); // past the window that merges quick edits
 
   store.updateTask(b, { deps: [{ taskId: a, type: 'SS', lag: -2 }], actor: 'Ana' });
   assert.equal(find(b).computed.start, '2026-01-12');

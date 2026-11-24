@@ -196,6 +196,9 @@ export class StoreCore {
         tasks: [],
         actions: [],
       };
+      // New projects start out being planned, so setting them up doesn't fill every
+      // task's history. Setting a baseline, or the project settings, ends it.
+      setPlanning(project, input.planning === undefined ? true : !!input.planning);
       draft.projects.push(project);
       return project.id;
     });
@@ -214,6 +217,7 @@ export class StoreCore {
       if (input.calendar !== undefined) project.calendar = cleanCalendar(input.calendar);
       // Only new tasks and links use this, so changing it moves nothing.
       if (input.defaultDayUnit !== undefined) project.defaultDayUnit = cleanDayUnit(input.defaultDayUnit);
+      if (input.planning !== undefined) setPlanning(project, !!input.planning);
       project.updatedAt = new Date().toISOString();
       return id;
     }, { actor: cleanActor(input.actor), cause: 'the project calendar' });
@@ -240,6 +244,7 @@ export class StoreCore {
         return id;
       }
       const schedule = this.#schedule(draft.projects);
+      setPlanning(project, false); // a baseline is the agreed plan, so changes count from here
       project.baseline = {
         at: new Date().toISOString(),
         tasks: Object.fromEntries(
@@ -362,7 +367,7 @@ export class StoreCore {
       }
       assertDepsExist(draft, task);
       const changes = diffViews(before, historyView(draft, task));
-      if (changes.length) addHistory(task, { type: 'edit', author: actor, changes });
+      if (changes.length) addHistory(task, { type: 'edit', author: actor, changes }, project);
       project.updatedAt = new Date().toISOString();
       return task.id;
     }, {
@@ -419,7 +424,7 @@ export class StoreCore {
       applyActionFields(action, input);
       normalizeStatus(action, input, prevStatus);
       const changes = diffViews(before, actionView(action));
-      if (changes.length) addHistory(action, { type: 'edit', author: actor, changes });
+      if (changes.length) addHistory(action, { type: 'edit', author: actor, changes }, project);
       project.updatedAt = new Date().toISOString();
       return action.id;
     }, { actor });
@@ -446,8 +451,37 @@ export class StoreCore {
     }, { actor });
   }
 
-  moveTask(taskId, direction, rawActor) {
+  // `direction` is up, down, indent or outdent, or before, after or into with a
+  // `targetId` in the same project: before or after puts the task next to the target
+  // under the same parent, and into puts it first under the target.
+  moveTask(taskId, direction, rawActor, targetId) {
     const actor = cleanActor(rawActor);
+    if (direction === 'before' || direction === 'after' || direction === 'into') {
+      return this.#transact((draft) => {
+        const { project, task } = findTask(draft, taskId);
+        const target = project.tasks.find((t) => t.id === targetId);
+        if (!target) throw bad('Tasks can only be moved next to another task in the same project.');
+        for (let t = target; t; t = project.tasks.find((x) => x.id === t.parentId)) {
+          if (t === task) throw bad('A task cannot be moved next to or under itself or its subtasks.');
+        }
+        if (direction === 'into' && target.milestone) throw bad('A milestone cannot have subtasks.');
+        const before = historyView(draft, task);
+        project.tasks.splice(project.tasks.indexOf(task), 1);
+        if (direction === 'into') {
+          task.parentId = target.id;
+          // Ahead of every other subtask, which may sit anywhere in the list.
+          const first = project.tasks.findIndex((t) => t.parentId === target.id);
+          project.tasks.splice(first < 0 ? project.tasks.length : first, 0, task);
+        } else {
+          task.parentId = target.parentId || null;
+          project.tasks.splice(project.tasks.indexOf(target) + (direction === 'after' ? 1 : 0), 0, task);
+        }
+        const changes = diffViews(before, historyView(draft, task));
+        if (changes.length) addHistory(task, { type: 'edit', author: actor, changes }, project);
+        project.updatedAt = new Date().toISOString();
+        return task.id;
+      }, { actor, cause: taskId });
+    }
     return this.#transact((draft) => {
       const { project, task } = findTask(draft, taskId);
       const siblings = project.tasks.filter((t) => (t.parentId || null) === (task.parentId || null));
@@ -477,7 +511,7 @@ export class StoreCore {
         throw bad('Unknown move.');
       }
       const changes = diffViews(before, historyView(draft, task));
-      if (changes.length) addHistory(task, { type: 'edit', author: actor, changes });
+      if (changes.length) addHistory(task, { type: 'edit', author: actor, changes }, project);
       project.updatedAt = new Date().toISOString();
       return task.id;
     }, { actor, cause: taskId });
@@ -595,7 +629,7 @@ export class StoreCore {
             author: actor,
             note: causeLabel ? `Rescheduled after a change to ${causeLabel}` : 'Rescheduled',
             changes,
-          });
+          }, project, { selfCaused: cause === task.id });
         }
         task.schedStart = c.start;
         task.schedEnd = c.end;
@@ -739,9 +773,70 @@ function dropDeps(task, removed, reason, actor) {
   });
 }
 
-function addHistory(task, entry) {
-  task.history.push({ id: newId(), at: new Date().toISOString(), ...entry });
+// Edits that come close together are one entry, so entering a task's details or trying
+// a few dates doesn't fill its history. An entry takes in the next edit by the same
+// person within this long of its last one, keeping where each field started and where
+// it ended up. While a project is being planned, every edit goes into the task's
+// "created" entry instead. Each merged entry keeps its steps, for "Show every change".
+export const MERGE_WINDOW_MS = 10 * 60 * 1000;
+const MAX_STEPS = 100;
+
+function setPlanning(project, on) {
+  if (on) project.planning = true;
+  else delete project.planning;
 }
+
+// `selfCaused` marks a task rescheduled by its own edit, which belongs with that edit.
+function addHistory(task, entry, project = null, { selfCaused = false } = {}) {
+  const at = new Date().toISOString();
+  const into = mergeTarget(task.history, entry, at, !!project?.planning, selfCaused);
+  if (!into) {
+    task.history.push({ id: newId(), at, ...entry });
+    return;
+  }
+  if (!into.steps) into.steps = [stepOf(into)];
+  into.steps.push(stepOf({ at, ...entry }));
+  if (into.steps.length > MAX_STEPS) {
+    // The first step says how the entry began, so the oldest after it go.
+    const extra = into.steps.length - MAX_STEPS;
+    into.steps.splice(1, extra);
+    into.stepsDropped = (into.stepsDropped ?? 0) + extra;
+  }
+  const changes = into.changes ?? [];
+  for (const change of entry.changes ?? []) {
+    const same = changes.find((c) => c.field === change.field);
+    if (same) same.to = change.to;
+    else changes.push({ ...change });
+  }
+  // A field put back where it started has nothing to show.
+  into.changes = changes.filter((c) => c.from !== c.to);
+  into.lastAt = at;
+}
+
+function mergeTarget(history, entry, at, planning, selfCaused) {
+  if (entry.type !== 'edit' && entry.type !== 'schedule') return null;
+  if (entry.type === 'edit' && entry.note) return null; // it says why, so it stands alone
+  if (planning) {
+    const created = history.find((e) => e.type === 'create');
+    if (created) return created;
+  }
+  const last = history.at(-1);
+  if (!last || last.author !== entry.author) return null;
+  if (Date.parse(at) - Date.parse(last.lastAt ?? last.at) > MERGE_WINDOW_MS) return null;
+  // A task moved by something else says why, so it stands apart from the task's own edits.
+  if (entry.type === 'schedule' && !selfCaused) return last.type === 'schedule' && last.note === entry.note ? last : null;
+  if (last.type === 'create') return last;
+  if (entry.type === 'schedule') return last.type === 'edit' && !last.note ? last : null;
+  return last.type === 'edit' && !last.note ? last : null;
+}
+
+const stepOf = (e) => ({
+  at: e.at,
+  type: e.type,
+  author: e.author,
+  ...(e.note ? { note: e.note } : {}),
+  ...(e.changes?.length ? { changes: e.changes.map((c) => ({ ...c })) } : {}),
+});
 
 function taskLabel(draft, id, fromProjectId) {
   for (const project of draft.projects) {
@@ -838,6 +933,7 @@ function parseImport(payload) {
       color: COLORS.includes(raw.color) ? raw.color : COLORS[index % COLORS.length],
       calendar: cleanCalendar(raw.calendar),
       defaultDayUnit: cleanDayUnit(raw.defaultDayUnit ?? 'working'),
+      ...(raw.planning === true ? { planning: true } : {}),
       baseline: parseBaseline(raw.baseline, own),
       createdAt: isoTimestamp(raw.createdAt),
       updatedAt: isoTimestamp(raw.updatedAt),
@@ -907,27 +1003,38 @@ function parseImportedTask(raw, where, taskIds) {
 function parseHistory(history) {
   if (!Array.isArray(history)) return [];
   const text = (v) => (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? v : '');
+  const changesOf = (list) => list
+    .filter((c) => c && typeof c === 'object')
+    .map((c) => ({
+      field: String(c.field ?? '').slice(0, 40),
+      label: String(c.label ?? '').slice(0, 80),
+      from: text(c.from),
+      to: text(c.to),
+    }));
+  const base = (e) => ({
+    at: isoTimestamp(e.at),
+    type: ['create', 'edit', 'update', 'schedule'].includes(e.type) ? e.type : 'edit',
+    author: cleanActor(e.author),
+    ...(typeof e.note === 'string' ? { note: e.note.slice(0, 5000) } : {}),
+    ...(Array.isArray(e.changes) ? { changes: changesOf(e.changes) } : {}),
+  });
   return history
     .filter((e) => e && typeof e === 'object')
-    .map((e) => ({
-      id: ID_RE.test(e.id) ? e.id : newId(),
-      at: isoTimestamp(e.at),
-      type: ['create', 'edit', 'update', 'schedule'].includes(e.type) ? e.type : 'edit',
-      author: cleanActor(e.author),
-      ...(typeof e.note === 'string' ? { note: e.note.slice(0, 5000) } : {}),
-      ...(Array.isArray(e.changes)
-        ? {
-            changes: e.changes
-              .filter((c) => c && typeof c === 'object')
-              .map((c) => ({
-                field: String(c.field ?? '').slice(0, 40),
-                label: String(c.label ?? '').slice(0, 80),
-                from: text(c.from),
-                to: text(c.to),
-              })),
-          }
-        : {}),
-    }));
+    .map((e) => {
+      const { at, type, ...rest } = base(e);
+      return {
+        id: ID_RE.test(e.id) ? e.id : newId(),
+        at,
+        type,
+        author: cleanActor(e.author),
+        ...rest,
+        ...(typeof e.lastAt === 'string' ? { lastAt: isoTimestamp(e.lastAt) } : {}),
+        ...(Array.isArray(e.steps)
+          ? { steps: e.steps.filter((x) => x && typeof x === 'object').slice(0, MAX_STEPS).map(base) }
+          : {}),
+        ...(Number.isInteger(e.stepsDropped) && e.stepsDropped > 0 ? { stepsDropped: e.stepsDropped } : {}),
+      };
+    });
 }
 
 function parseBaseline(baseline, ownIds) {

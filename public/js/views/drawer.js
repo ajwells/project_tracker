@@ -227,7 +227,7 @@ function buildDrawer({ project, task }) {
       notices.length ? h('div', { class: 'stack', style: { gap: '6px' } }, notices) : null,
       h('section', { class: 'drawer-section' }, h('h3', {}, 'Details'), details, notes, options, outline),
       dependenciesSection(project, task),
-      historySection(task, `/api/tasks/${task.id}`),
+      historySection(task, `/api/tasks/${task.id}`, project),
       h('div', {}, h('button', {
         class: 'btn danger', type: 'button',
         onclick: async () => {
@@ -451,7 +451,7 @@ function buildActionDrawer({ project, action }) {
     h('div', { class: 'drawer-body' },
       h('div', { class: 'row wrap' }, statusPill(action.status)),
       h('section', { class: 'drawer-section' }, h('h3', {}, 'Details'), details, notes),
-      historySection(action, path),
+      historySection(action, path, project),
       h('div', {}, h('button', {
         class: 'btn danger', type: 'button',
         onclick: async () => {
@@ -468,7 +468,7 @@ function buildActionDrawer({ project, action }) {
       }, icon('trash'), 'Delete action item'))));
 }
 
-function historySection(task, path) {
+function historySection(task, path, project) {
   const box = h('textarea', {
     placeholder: 'Post an update: progress, risks, decisions…',
     'aria-label': 'Post an update',
@@ -487,24 +487,75 @@ function historySection(task, path) {
     }
   };
 
-  const items = [...task.history].reverse().map((entry) => h('div', { class: `feed-item ${entry.type}` },
-    h('div', { class: 'feed-meta' }, h('b', {}, entry.author || 'Unknown'), ` · ${fmtWhen(entry.at)}`),
-    entry.note ? h('div', { class: 'feed-note' }, entry.note) : null,
-    (entry.changes ?? []).map((change) => changeLine(change))));
+  // Quick edits are stored as one entry holding each step. Normally the entry shows
+  // where things ended up, and "Show every change" lists the steps instead.
+  const every = ctx.historyDetail;
+  const newestFirst = [...task.history].reverse();
+  const merged = newestFirst.some((e) => e.steps);
+  const shown = every
+    ? newestFirst.flatMap((e) => (e.steps ? stepsOf(e).reverse() : [e]))
+    : newestFirst.filter((e) => e.type === 'create' || e.note || e.changes?.length);
+  const items = shown.map((entry) => feedItem(entry, every));
 
   return h('section', { class: 'drawer-section' },
-    h('h3', {}, `History (${task.history.length})`),
+    h('h3', {}, `History (${shown.length})`),
+    project?.planning ? h('p', { class: 'small muted', 'data-planning-note': 'true' },
+      'This project is still being planned, so changes are kept in the "created" entry below. Setting a baseline, or turning off "Still planning" in project settings, starts listing them.') : null,
     box,
     h('div', { class: 'row', style: { justifyContent: 'space-between' } },
       h('button', { class: 'btn ghost small', type: 'button', style: { paddingLeft: 0 }, onclick: openNameDialog }, `Posting as ${ctx.actor || 'Anonymous'}`),
       h('button', { class: 'btn primary', type: 'button', onclick: post }, 'Post update')),
+    merged ? h('label', { class: 'check small', style: { alignItems: 'center' } },
+      h('input', {
+        type: 'checkbox', name: 'historyDetail', checked: every, style: { marginTop: 0 },
+        onchange: (e) => {
+          ctx.historyDetail = e.target.checked;
+          ctx.render();
+        },
+      }), 'Show every change') : null,
     task.history.length ? h('div', { class: 'feed-sides small muted' }, h('span', {}, 'Updates'), h('span', {}, 'Changes')) : null,
     h('div', { class: 'feed' }, items));
 }
 
+// A merged entry's steps, as entries of their own.
+const stepsOf = (entry) => entry.steps.map((step, i) => ({ ...step, id: `${entry.id}:${i}`, author: step.author ?? entry.author }));
+
+const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+const clock = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+function feedItem(entry, every) {
+  const steps = !every && entry.steps ? entry.steps.length : 0;
+  const open = steps && ctx.openSteps.has(entry.id);
+  // Until when, unless that's the same minute it started.
+  const sameMinute = entry.lastAt && fmtWhen(entry.lastAt) === fmtWhen(entry.at);
+  const until = steps && entry.lastAt && !sameMinute ? ` – ${sameDay(entry.at, entry.lastAt) ? clock(entry.lastAt) : fmtWhen(entry.lastAt)}` : '';
+  // A task set up straight after it was made shows what it was set to.
+  const setup = entry.type === 'create';
+  return h('div', { class: `feed-item ${entry.type}`, 'data-entry': entry.id },
+    h('div', { class: 'feed-meta' }, h('b', {}, entry.author || 'Unknown'), ` · ${fmtWhen(entry.at)}${until}`,
+      steps ? h('button', {
+        class: 'btn ghost small feed-steps', type: 'button', 'aria-expanded': String(!!open),
+        onclick: () => {
+          if (open) ctx.openSteps.delete(entry.id);
+          else ctx.openSteps.add(entry.id);
+          ctx.render();
+        },
+      }, plural(steps + (entry.stepsDropped ?? 0), 'edit')) : null),
+    entry.note ? h('div', { class: 'feed-note' }, entry.note) : null,
+    !open && steps && !entry.changes?.length && !setup ? h('div', { class: 'feed-change' }, 'Everything was put back as it was') : null,
+    (entry.changes ?? []).map((change) => changeLine(change, { setup })),
+    open ? h('div', { class: 'feed-step-list' },
+      entry.stepsDropped ? h('div', { class: 'feed-change muted' }, `${plural(entry.stepsDropped, 'earlier edit')} not kept`) : null,
+      stepsOf(entry).map((step) => h('div', { class: 'feed-step' },
+        h('div', { class: 'feed-meta' }, step.author !== entry.author ? h('b', {}, step.author) : null,
+          `${step.author !== entry.author ? ' · ' : ''}${sameDay(step.at, entry.at) ? clock(step.at) : fmtWhen(step.at)}`),
+        step.note ? h('div', { class: 'feed-change' }, step.note) : null,
+        (step.changes ?? []).map((change) => changeLine(change))))) : null);
+}
+
 const blank = (value) => (value === '' || value === null || value === undefined ? 'none' : value);
 
-function changeLine(change) {
+function changeLine(change, { setup = false } = {}) {
   const show = (value) => {
     if (typeof value === 'boolean') return value ? 'yes' : 'no';
     if (change.field === 'status') return STATUS[value]?.label ?? value;
@@ -513,6 +564,7 @@ function changeLine(change) {
     if (['start', 'finish', 'schedStart', 'schedEnd'].includes(change.field) && value) return fmtDate(String(value), true);
     return blank(value);
   };
-  if (change.field === 'notes') return h('div', { class: 'feed-change' }, 'Notes updated');
+  if (change.field === 'notes') return h('div', { class: 'feed-change' }, setup ? 'Notes added' : 'Notes updated');
+  if (setup) return h('div', { class: 'feed-change' }, `${change.label}: `, show(change.to));
   return h('div', { class: 'feed-change' }, `${change.label}: `, h('s', {}, show(change.from)), ' → ', show(change.to));
 }

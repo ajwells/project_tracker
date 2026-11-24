@@ -8,6 +8,7 @@ import { layoutGantt, portfolioRows, projectRows } from '../chart/gantt.js';
 import { layoutTimeline, portfolioGroups, projectGroups } from '../chart/timeline.js';
 import { openExportDialog } from '../export.js';
 import { heldEdit, previewEdit, proposeEdit } from '../held-edit.js';
+import { dragToReorder } from '../reorder.js';
 
 const seg = (options, value, onChange, label) => h('div', { class: 'seg', role: 'group', 'aria-label': label },
   options.map(([key, text]) => h('button', {
@@ -37,12 +38,13 @@ function portfolioSpan() {
 
 const conflictKey = (pal) => h('span', {}, h('i', { class: 'conflict-key', style: { background: pal.conflict, color: pal.surface } }, '!'), 'Conflict');
 
-function ganttLegend(pal, color, showCritical, showBaseline, hasCross, hasConflicts) {
+function ganttLegend(pal, color, showCritical, showBaseline, hasCross, hasConflicts, hasHolidays) {
   return h('div', { class: 'legend' },
     h('span', {}, h('i', { style: { background: `linear-gradient(90deg, ${color} 50%, ${mix(color, pal.surface, 0.68)} 50%)` } }), 'Done / remaining'),
     showCritical ? h('span', {}, h('i', { style: { border: `1.5px solid ${pal.critical}` } }), 'Critical path') : null,
     h('span', {}, h('i', { class: 'ms', style: { background: color } }), 'Milestone'),
     hasConflicts ? conflictKey(pal) : null,
+    hasHolidays ? h('span', {}, h('i', { style: { background: pal.holiday, border: `1px solid ${pal.holidayMark}` } }), 'Holiday') : null,
     hasCross ? h('span', {}, h('i', { style: { height: 0, borderTop: `1.5px dashed ${pal.cross}`, borderRadius: 0 } }), 'Cross-project link') : null,
     showBaseline ? h('span', {}, h('i', { style: { height: '3px', background: pal.baseline } }), 'Baseline') : null,
     h('span', {}, h('i', { style: { width: 0, height: '12px', borderLeft: `1.5px dashed ${pal.today}`, borderRadius: 0 } }), 'Today'));
@@ -62,6 +64,10 @@ export function renderGanttView(view, project) {
   const showBaseline = hasBaseline && options.baseline;
   const showCritical = options.critical && !!project;
   const showConflicts = options.conflicts;
+  // Holidays belong to each project, so only a project's own chart shows them.
+  const projectHolidays = project?.calendar?.holidays ?? [];
+  const holidays = options.holidays ? projectHolidays : [];
+  const showLags = options.lags;
 
   const build = (fn, collapsed) => (project
     ? projectRows(project, ctx.data, fn, collapsed)
@@ -85,6 +91,14 @@ export function renderGanttView(view, project) {
       options.conflicts = v;
       ctx.render();
     }),
+    checkbox('Lead/lag', options.lags, (v) => {
+      options.lags = v;
+      ctx.render();
+    }),
+    projectHolidays.length ? checkbox('Holidays', options.holidays, (v) => {
+      options.holidays = v;
+      ctx.render();
+    }) : null,
     hasBaseline ? checkbox('Baseline', options.baseline, (v) => {
       options.baseline = v;
       ctx.render();
@@ -113,6 +127,8 @@ export function renderGanttView(view, project) {
         showCritical,
         showBaseline,
         showConflicts,
+        holidays,
+        showLags,
         multi: !project,
         build: (fn) => build(fn, ctx.collapsed),
       }),
@@ -125,7 +141,7 @@ export function renderGanttView(view, project) {
 
   const scroller = h('div', { class: 'chart-scroll', 'data-scroll-key': `gantt:${project?.id ?? 'all'}:${zoom}` });
   const legendColor = project ? colorFn(project.color) : colorFn('blue');
-  view.append(toolbar, ganttLegend(pal, legendColor, showCritical, showBaseline, links.some((l) => l.cross), showConflicts && rows.some((r) => r.conflict)), scroller);
+  view.append(toolbar, ganttLegend(pal, legendColor, showCritical, showBaseline, links.some((l) => l.cross), showConflicts && rows.some((r) => r.conflict), holidays.length > 0), scroller);
 
   const layout = layoutGantt({
     rows,
@@ -140,11 +156,13 @@ export function renderGanttView(view, project) {
     showCritical,
     showBaseline,
     showConflicts,
+    holidays,
+    showLags,
     today: ctx.data.today,
     selectedTask: ctx.taskId, // on screen only: exports draw their own charts
     range: heldRange(held),
   });
-  mountGantt(scroller, layout, pal, rows, held);
+  mountGantt(scroller, layout, pal, rows, held, !!project);
   scroller.addEventListener('firstshow', () => {
     if (zoom === 'fit') return;
     const { startN, ppd } = layout.geometry;
@@ -196,7 +214,7 @@ function drawGhosts(body, moves, g, rows, pal) {
   return layer;
 }
 
-function mountGantt(scroller, layout, pal, rows, held) {
+function mountGantt(scroller, layout, pal, rows, held, reorderable) {
   const { regions, geometry: g, width, height } = layout;
   const chartW = width - g.labelWidth;
   const bodyH = g.rowsBottom - g.rowsTop;
@@ -234,6 +252,47 @@ function mountGantt(scroller, layout, pal, rows, held) {
     }
   });
 
+  // Drag a task's name up or down to reorder it, on a project's own chart. The other
+  // projects' tasks listed after its own can't be moved here.
+  if (reorderable) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const order = rows.filter((r) => !r.external).map((r) => ({ id: r.key, depth: r.depth, open: !!r.collapsible && !r.collapsed }));
+    let lines = [];
+    const showLine = (place) => {
+      for (const line of lines) line.remove();
+      lines = [];
+      if (!place) return;
+      const y = g.rowsTop + place.edge * g.rowH;
+      const from = 10 + place.depth * 14;
+      for (const [svg, x1, x2] of [[labels, from, g.labelWidth], [body, g.labelWidth, width]]) {
+        const line = document.createElementNS(NS, 'line');
+        Object.entries({ x1, x2, y1: y, y2: y, stroke: pal.selected, 'stroke-width': 2, 'pointer-events': 'none', 'data-drop-line': 'true' })
+          .forEach(([k, v]) => line.setAttribute(k, v));
+        svg.append(line);
+        lines.push(line);
+      }
+      const dot = document.createElementNS(NS, 'circle');
+      Object.entries({ cx: from, cy: y, r: 3.5, fill: pal.selected, 'pointer-events': 'none' }).forEach(([k, v]) => dot.setAttribute(k, v));
+      labels.append(dot);
+      lines.push(dot);
+    };
+    const rowAt = (clientY) => {
+      const box = labels.getBoundingClientRect();
+      const y = (clientY - box.top) * (bodyH / box.height);
+      const index = Math.floor(y / g.rowH);
+      if (index < 0 || index >= order.length) return null;
+      return { index, lower: y - index * g.rowH >= g.rowH / 2 };
+    };
+    labels.addEventListener('pointerdown', (event) => {
+      if (event.pointerType !== 'mouse' || event.button !== 0) return;
+      if (event.target.closest?.('[data-task]')?.getAttribute('data-task')?.startsWith('toggle:')) return;
+      const hit = rowAt(event.clientY);
+      if (!hit) return;
+      event.preventDefault();
+      dragToReorder(event, { dragId: order[hit.index].id, rows: order, rowAt, showLine, scroller });
+    });
+  }
+
   // Drag a bar to move it, or its right edge to change the finish. Mouse only:
   // on touch screens a swipe has to scroll the chart.
   const EDGE = 8;
@@ -244,7 +303,7 @@ function mountGantt(scroller, layout, pal, rows, held) {
     const { computed: c } = found.task;
     const left = g.labelWidth + (toN(c.start) - g.startN) * g.ppd;
     const right = g.labelWidth + (toN(c.end) + 1 - g.startN) * g.ppd;
-    return { task: found.task, left, right };
+    return { task: found.task, left, right, milestone: !!found.task.milestone };
   };
 
   body.addEventListener('pointermove', (event) => {
@@ -252,7 +311,7 @@ function mountGantt(scroller, layout, pal, rows, held) {
     const target = event.target.closest?.('[data-drag=true]');
     if (!target) return;
     const info = barInfo(target);
-    if (info) target.style.cursor = info.right - pointX(event) <= EDGE ? 'ew-resize' : 'grab';
+    if (info) target.style.cursor = !info.milestone && info.right - pointX(event) <= EDGE ? 'ew-resize' : 'grab';
   });
 
   body.addEventListener('pointerdown', (event) => {
@@ -263,12 +322,20 @@ function mountGantt(scroller, layout, pal, rows, held) {
     if (!info) return;
     event.preventDefault();
     const startX = pointX(event);
-    const resize = info.right - startX <= EDGE;
+    // A milestone only moves: it has no finish of its own to drag.
+    const resize = !info.milestone && info.right - startX <= EDGE;
     const barBox = target.getBBox();
-    const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    ghost.setAttribute('y', barBox.y);
-    ghost.setAttribute('height', barBox.height);
-    ghost.setAttribute('rx', 4);
+    const ghost = document.createElementNS('http://www.w3.org/2000/svg', info.milestone ? 'polygon' : 'rect');
+    if (info.milestone) {
+      const cx = barBox.x + barBox.width / 2;
+      const cy = barBox.y + barBox.height / 2;
+      const r = barBox.width / 2 + 2;
+      ghost.setAttribute('points', `${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`);
+    } else {
+      ghost.setAttribute('y', barBox.y);
+      ghost.setAttribute('height', barBox.height);
+      ghost.setAttribute('rx', 4);
+    }
     ghost.setAttribute('fill', 'none');
     ghost.setAttribute('stroke', pal.ink);
     ghost.setAttribute('stroke-width', 1.5);
@@ -281,7 +348,7 @@ function mountGantt(scroller, layout, pal, rows, held) {
     const fieldsFor = (days) => {
       if (resize) return { end: fromN(toN(c.end) + days) };
       const fields = { start: fromN(toN(c.start) + days) };
-      if (info.task.trackBy === 'dates') fields.end = fromN(toN(c.end) + days);
+      if (info.task.trackBy === 'dates' && !info.milestone) fields.end = fromN(toN(c.end) + days);
       return fields;
     };
     let previewedDelta = 0;
@@ -318,11 +385,15 @@ function mountGantt(scroller, layout, pal, rows, held) {
       showKnockOn();
       heldGhosts?.remove();
       const shift = delta * g.ppd;
-      ghost.setAttribute('x', resize ? info.left : info.left + shift);
-      ghost.setAttribute('width', resize ? info.right + shift - info.left : info.right - info.left);
+      if (info.milestone) {
+        ghost.setAttribute('transform', `translate(${shift} 0)`);
+      } else {
+        ghost.setAttribute('x', resize ? info.left : info.left + shift);
+        ghost.setAttribute('width', resize ? info.right + shift - info.left : info.right - info.left);
+      }
       const label = resize
         ? `Finish: ${fmtDate(fromN(toN(c.end) + delta), true)}`
-        : `Start: ${fmtDate(fromN(toN(c.start) + delta), true)}`;
+        : `${info.milestone ? 'Date' : 'Start'}: ${fmtDate(fromN(toN(c.start) + delta), true)}`;
       showTip(`${label}${knockOn}`, moveEvent.clientX, moveEvent.clientY);
     };
     const finish = async () => {

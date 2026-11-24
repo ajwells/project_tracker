@@ -2,6 +2,7 @@ import { api, ctx } from '../ctx.js';
 import { dayWord, depSuffix, describeDep, fmtDate, h, healthPill, icon, plural, shortDuration, statusPill, STATUS } from '../util.js';
 import { currentMode, projectColor } from '../chart/core.js';
 import { orderedTasks } from '../chart/gantt.js';
+import { dragToReorder } from '../reorder.js';
 
 export function predecessorChips(task, project) {
   return task.deps.map((dep) => {
@@ -97,6 +98,7 @@ export function renderTasks(view, project) {
       }, chevronIcon())
       : h('span', { class: 'chev-spacer' });
     return h('tr', {
+      'data-task-row': task.id,
       class: `clickable ${c.isSummary ? 'summary-row' : ''} ${ctx.taskId === task.id ? 'selected' : ''}`,
       tabindex: 0,
       onclick: () => ctx.openTask(task.id),
@@ -123,14 +125,41 @@ export function renderTasks(view, project) {
     h('td', { 'data-label': task.deps.length ? 'Depends on' : '', class: task.deps.length ? 'span-all' : 'hide-card' }, predecessorChips(task, project)));
   });
 
-  view.append(
-    toolbar,
-    h('div', { class: 'table-wrap cards grow', 'data-scroll-key': `tasks:${project.id}` },
+  const wrap = h('div', { class: 'table-wrap cards grow', 'data-scroll-key': `tasks:${project.id}` },
       h('table', { class: 'grid' },
         h('thead', {}, h('tr', {}, ['#', 'Task', 'Current POC', 'Status', 'Health', 'Start', 'Finish', 'Days', 'Progress', 'Depends on'].map((t) => h('th', {}, t)))),
-        h('tbody', {}, rows.length ? rows : h('tr', {}, h('td', { colspan: 10, class: 'muted span-all' }, 'No tasks match these filters.'))))),
-    addForm,
-  );
+        h('tbody', {}, rows.length ? rows : h('tr', {}, h('td', { colspan: 10, class: 'muted span-all' }, 'No tasks match these filters.')))));
+  // Rows can be dragged into a new order, but not while filtered, when the rows shown
+  // aren't the whole outline.
+  if (!filtering) enableReorder(wrap, rows, tasks);
+  view.append(toolbar, wrap, addForm);
+}
+
+function enableReorder(wrap, rowEls, tasks) {
+  const order = tasks.map((t) => ({ id: t.id, depth: t.computed.depth, open: t.computed.isSummary && !ctx.collapsed.has(t.id) }));
+  const line = h('div', { class: 'drop-line', hidden: true });
+  wrap.append(line);
+  const showLine = (place) => {
+    line.hidden = !place;
+    if (!place) return;
+    const wrapBox = wrap.getBoundingClientRect();
+    const edgeRow = rowEls[Math.min(place.edge, rowEls.length - 1)].getBoundingClientRect();
+    const y = place.edge < rowEls.length ? edgeRow.top : edgeRow.bottom;
+    const name = rowEls[0].querySelector('.task-name').getBoundingClientRect();
+    line.style.top = `${y - wrapBox.top + wrap.scrollTop - 1}px`;
+    line.style.left = `${name.left - wrapBox.left + wrap.scrollLeft + place.depth * 16}px`;
+  };
+  const rowAt = (clientY) => {
+    const index = rowEls.findIndex((el) => el.getBoundingClientRect().bottom > clientY);
+    if (index < 0) return null;
+    const box = rowEls[index].getBoundingClientRect();
+    if (clientY < box.top) return null;
+    return { index, lower: clientY - box.top >= box.height / 2 };
+  };
+  rowEls.forEach((el, index) => el.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0 || event.target.closest('button')) return;
+    dragToReorder(event, { dragId: order[index].id, rows: order, rowAt, showLine, scroller: wrap });
+  }));
 }
 
 function chevronIcon() {

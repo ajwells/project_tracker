@@ -358,7 +358,7 @@ test('random plans with calendar days that skip holidays match real slips', () =
 
 test('the setting is saved only when on, survives export and import, and moves tasks with history', () => {
   const s = store();
-  const projectId = s.createProject({ name: 'P', defaultDayUnit: 'calendar', calendar: { holidays: ['2026-11-04'] } });
+  const projectId = s.createProject({ name: 'P', planning: false, defaultDayUnit: 'calendar', calendar: { holidays: ['2026-11-04'] } });
   s.createTask(projectId, { name: 'A', start: '2026-11-03', duration: 3 });
   const a = tasksOf(s)[0];
   assert.equal('calendarDaysSkipHolidays' in s.snapshot().projects[0].calendar, false);

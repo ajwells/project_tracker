@@ -61,7 +61,7 @@ export function applyChange(store, method, pathname, body) {
       return ok();
     }
     if (parts[2] === 'move' && parts.length === 3 && method === 'POST') {
-      store.moveTask(id, body.direction, actor);
+      store.moveTask(id, body.direction, actor, body.targetId);
       return ok();
     }
   }

@@ -31,10 +31,12 @@ export const ctx = {
   collapsed: new Set(),
   filters: { search: '', poc: '', status: '' },
   actionFilters: { search: '', poc: '', status: '', showDone: true },
-  gantt: { zoom: null, critical: true, baseline: false, detail: 'key', conflicts: true },
+  gantt: { zoom: null, critical: true, baseline: false, detail: 'key', conflicts: true, holidays: true, lags: true },
   timelineScope: 'key',
   timelineConflicts: true,
   composer: new Map(), // unsent update text, by task id
+  historyDetail: false, // "Show every change" in the panel's history
+  openSteps: new Set(), // merged history entries showing their steps, by entry id
   focusAfter: null,
   storage,
   render: () => {},

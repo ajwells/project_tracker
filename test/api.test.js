@@ -24,7 +24,7 @@ const patch = (path, body) => api('PATCH', path, body);
 const taskIn = (state, id) => state.projects.flatMap((p) => p.tasks).find((t) => t.id === id);
 
 async function makeProject(name) {
-  const { json } = await post('/api/projects', { name });
+  const { json } = await post('/api/projects', { name, planning: false });
   return json.createdId;
 }
 async function makeTask(projectId, name, fields = {}) {
@@ -116,12 +116,12 @@ test('task edits write history with who, what, from and to', async () => {
   await patch(`/api/tasks/${t}`, { pocName: 'Ben', actor: 'Ana' });
   const { json } = await post(`/api/tasks/${t}/updates`, { note: 'Draft shared', actor: 'Ben' });
   const history = taskIn(json, t).history;
+  // Ana's edits straight after creating it are part of creating it, from start to end.
+  assert.equal(history.length, 2);
   assert.equal(history[0].type, 'create');
-  assert.deepEqual(
-    history[2].changes.map((c) => [c.label, c.from, c.to]),
-    [['Current POC', 'Ana', 'Ben']],
-  );
-  assert.equal(history[2].author, 'Ana');
+  assert.equal(history[0].author, 'Ana');
+  assert.deepEqual(history[0].changes.map((c) => [c.label, c.from, c.to]), [['Current POC', '', 'Ben']]);
+  assert.deepEqual(history[0].steps.map((s) => s.type), ['create', 'edit', 'edit']);
   assert.equal(history.at(-1).type, 'update');
   assert.equal(history.at(-1).note, 'Draft shared');
   assert.equal(history.at(-1).author, 'Ben');
@@ -213,6 +213,49 @@ test('indent, outdent and reorder', async () => {
   assert.equal(taskIn(json, b).parentId, null);
   assert.equal(taskIn(json, b).computed.wbs, '3');
   assert.equal((await post(`/api/tasks/${a}/move`, { direction: 'sideways' })).status, 400);
+});
+
+test('dragging a task before, after or into another', async () => {
+  const p = await makeProject('Drag order');
+  const a = await makeTask(p, 'A');
+  const b = await makeTask(p, 'B');
+  const c = await makeTask(p, 'C');
+  const d = await makeTask(p, 'D');
+  const wbs = (json) => Object.fromEntries([a, b, c, d].map((id) => [taskIn(json, id).name, taskIn(json, id).computed.wbs]));
+  let { json } = await post(`/api/tasks/${d}/move`, { direction: 'before', targetId: b });
+  assert.deepEqual(wbs(json), { A: '1', B: '3', C: '4', D: '2' });
+  ({ json } = await post(`/api/tasks/${a}/move`, { direction: 'after', targetId: c }));
+  assert.deepEqual(wbs(json), { A: '4', B: '2', C: '3', D: '1' });
+
+  // Into puts it first under the target, ahead of subtasks already there.
+  ({ json } = await post(`/api/tasks/${b}/move`, { direction: 'into', targetId: a }));
+  assert.equal(taskIn(json, b).parentId, a);
+  ({ json } = await post(`/api/tasks/${d}/move`, { direction: 'into', targetId: a }));
+  assert.deepEqual(wbs(json), { A: '2', B: '2.2', C: '1', D: '2.1' });
+  assert.match(JSON.stringify(taskIn(json, d).history.at(-1)), /parent/);
+
+  // Before or after a subtask joins its summary; next to a top-level task leaves it.
+  ({ json } = await post(`/api/tasks/${c}/move`, { direction: 'after', targetId: b }));
+  assert.equal(taskIn(json, c).parentId, a);
+  assert.equal(taskIn(json, c).computed.wbs, '1.3');
+  ({ json } = await post(`/api/tasks/${c}/move`, { direction: 'before', targetId: a }));
+  assert.equal(taskIn(json, c).parentId, null);
+  assert.deepEqual(wbs(json), { A: '2', B: '2.2', C: '1', D: '2.1' });
+
+  // A summary brings its subtasks along.
+  ({ json } = await post(`/api/tasks/${a}/move`, { direction: 'before', targetId: c }));
+  assert.deepEqual(wbs(json), { A: '1', B: '1.2', C: '2', D: '1.1' });
+
+  // Not next to or under itself or its own subtasks, not into a milestone, not across projects.
+  assert.equal((await post(`/api/tasks/${a}/move`, { direction: 'after', targetId: a })).status, 400);
+  assert.equal((await post(`/api/tasks/${a}/move`, { direction: 'before', targetId: d })).status, 400);
+  assert.equal((await post(`/api/tasks/${a}/move`, { direction: 'into', targetId: b })).status, 400);
+  const m = await makeTask(p, 'M');
+  await patch(`/api/tasks/${m}`, { milestone: true });
+  assert.equal((await post(`/api/tasks/${c}/move`, { direction: 'into', targetId: m })).status, 400);
+  const other = await makeTask(await makeProject('Elsewhere'), 'X');
+  assert.equal((await post(`/api/tasks/${c}/move`, { direction: 'before', targetId: other })).status, 400);
+  assert.equal((await post(`/api/tasks/${c}/move`, { direction: 'before' })).status, 400);
 });
 
 test('deleting a task or project removes links and notes it in history', async () => {

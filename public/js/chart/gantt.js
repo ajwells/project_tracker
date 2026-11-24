@@ -1,7 +1,7 @@
 // Gantt layout: turns rows and links into drawing primitives split by region, so
 // the screen can pin the header and labels while exports draw them all at once.
 
-import { fmtDate, fromN, plural, toN, ymd } from '../util.js';
+import { fmtDate, fmtRange, fromN, plural, shortDuration, toN, ymd } from '../util.js';
 import { conflictBadge, mix } from './core.js';
 import { axisBands, unitForScale, ZOOMS } from './scale.js';
 
@@ -12,11 +12,13 @@ const INDENT = 14;
 /**
  * rows: { key, task, label, wbs, depth, kind: task|summary|milestone|project|external,
  *         start, end, progress, color, poc, critical, baseline, external, tip, drag, collapsible }
- * links: { from, to, type, cross, critical }   // from/to are row keys
+ * links: { from, to, type, lag, lagUnit, cross, critical }   // from/to are row keys
+ * holidays: ISO dates to shade as days off. showLags labels links that have a lead or lag.
  */
 export function layoutGantt({
   rows, links, pal, text, width, zoom = 'fit', labelWidth = 300, showPoc = true, showWbs = true,
   showCritical = true, showBaseline = false, showConflicts = true, today, title, subtitle, legend = false, range, selectedTask = null,
+  holidays = [], showLags = true,
 }) {
   const dated = rows.filter((r) => r.start);
   let minN = Math.min(...dated.flatMap((r) => [toN(r.start), r.baseline ? toN(r.baseline.start) : Infinity]));
@@ -86,6 +88,18 @@ export function layoutGantt({
   }
   regions.head.push({ t: 'line', x1: labelWidth, y1: top + HEAD, x2: totalW, y2: top + HEAD, stroke: pal.gridStrong });
   regions.corner.push({ t: 'line', x1: 0, y1: top + HEAD, x2: labelWidth, y2: top + HEAD, stroke: pal.gridStrong });
+
+  // ---- holidays ----
+  // Above the weekend shading, which is drawn under it, and under everything else.
+  // Days in a row are one band, so a holiday week reads as one.
+  const holidayRuns = runsOf(holidays.map(toN).filter((n) => n >= startN && n <= endN));
+  for (const run of holidayRuns.reverse()) {
+    const x = X(run.from);
+    const w = (run.to - run.from + 1) * ppd;
+    const tip = `${run.from === run.to ? 'Holiday' : 'Holidays'}: ${fmtRange(fromN(run.from), fromN(run.to))}`;
+    regions.body.unshift({ t: 'rect', x, y: rowsTop, w, h: rowsBottom - rowsTop, fill: pal.holiday, tip, name: tip });
+    regions.head.push({ t: 'rect', x, y: top + HEAD - 4, w: Math.max(2, w), h: 4, fill: pal.holidayMark, tip, name: `${tip} (header)` });
+  }
 
   // ---- weekend shading ----
   if (unit === 'day' || unit === 'week') {
@@ -193,13 +207,16 @@ export function layoutGantt({
       const cx = X(toN(row.end)) + ppd / 2;
       const cy = barY + barH / 2;
       if (isSelected) rings.push({ t: 'diamond', cx, cy, r: 11, fill: 'none', stroke: pal.selected, strokeWidth: 2, ...base, selected: 'ring' });
-      geometry.set(row.key, { left: cx - 7, right: cx + 7, cy });
+      const geo = { left: cx - 7, right: cx + 7, cy };
+      geometry.set(row.key, geo);
       regions.body.push({
         t: 'diamond', cx, cy, r: 7, fill: row.progress >= 100 ? pal.ink2 : row.color,
-        stroke: isCritical ? pal.critical : pal.surface, strokeWidth: isCritical ? 2 : 1, ...base, name: `Milestone: ${row.label}`,
+        stroke: isCritical ? pal.critical : pal.surface, strokeWidth: isCritical ? 2 : 1, ...base, drag: row.drag, name: `Milestone: ${row.label}`,
       });
       const room = totalW - (cx + 19);
       const label = text.truncate(fmtDate(row.end), room, 11);
+      // Where its date ends, so a lead or lag label beside it can start after it.
+      if (label) geo.clearRight = cx + 19 + text.width(label, 11);
       if (label) regions.body.push({ t: 'text', x: cx + 19, y: cy, s: label, size: 11, fill: pal.ink2 });
       return;
     }
@@ -234,6 +251,7 @@ export function layoutGantt({
   // ---- dependency arrows ----
   const routes = [];
   const broken = []; // over the others, so a broken link is never hidden under one
+  const lags = []; // labeled after every arrow is known, so they can keep apart
   for (const link of links) {
     const a = geometry.get(link.from);
     const b = geometry.get(link.to);
@@ -263,7 +281,16 @@ export function layoutGantt({
       points = [[x1, y1], [exitX, y1], [exitX, midY], [enterX, midY], [enterX, y2], [x2, y2]];
     }
     const isCritical = showCritical && link.critical;
-    if (showConflicts && link.conflict) {
+    const broke = showConflicts && link.conflict;
+    if (showLags && link.lag) {
+      const s = `${link.lag < 0 ? '−' : '+'}${shortDuration(Math.abs(link.lag), link.lagUnit)}`;
+      const color = broke ? pal.conflict : isCritical ? pal.critical : link.cross ? pal.cross : pal.ink2;
+      // Beside a milestone's right side, a label goes past the milestone's date.
+      const right1 = fromRight ? (a.clearRight ?? x1) : x1;
+      const right2 = toLeft ? x2 : (b.clearRight ?? x2);
+      lags.push({ link, s, w: text.width(s, 10, 600) + 6, color, x1, y1, x2, y2, right1, right2, exitX, fromRight, toLeft });
+    }
+    if (broke) {
       broken.push({ t: 'route', points, arrow: true, width: 1.6, stroke: pal.conflict, dash: '2 2', conflict: true });
       continue;
     }
@@ -273,7 +300,7 @@ export function layoutGantt({
       dash: link.cross ? '4 3' : undefined,
     });
   }
-  regions.body.push(...routes, ...broken, ...rings);
+  regions.body.push(...routes, ...broken, ...lagLabelsFor(lags, pal), ...rings);
 
   // ---- today ----
   if (todayN >= startN && todayN <= endN) {
@@ -308,6 +335,11 @@ export function layoutGantt({
       regions.foot.push(...conflictBadge(x + 7, y, pal));
       x += 19;
       addText('Conflict');
+    }
+    if (holidayRuns.length) {
+      regions.foot.push({ t: 'rect', x, y: y - 5, w: 14, h: 10, r: 2, fill: pal.holiday, stroke: pal.holidayMark, strokeWidth: 0.8 });
+      x += 19;
+      addText('Holiday');
     }
     if (links.some((l) => l.cross)) {
       regions.foot.push({ t: 'line', x1: x, y1: y, x2: x + 18, y2: y, stroke: pal.cross, width: 1.2, dash: '4 3' });
@@ -403,6 +435,59 @@ function tipFor(task, state, projectName) {
   return lines.join('\n');
 }
 
+// Lead and lag labels, over the arrows so they stay readable. A label normally sits where
+// its arrow reaches the waiting task. Arrows into the same side of a task share that end,
+// so their labels go where each arrow leaves its predecessor instead, or for arrows that
+// share both ends, beside the arrow's upright part. Labels that would still touch are
+// moved along, away from the bar they belong to.
+function lagLabelsFor(lags, pal) {
+  const tally = (list, key) => list.reduce((m, l) => m.set(key(l), (m.get(key(l)) ?? 0) + 1), new Map());
+  const endOf = (l) => `${l.link.to}|${l.toLeft}`;
+  const startOf = (l) => `${l.link.from}|${l.fromRight}`;
+  const ends = tally(lags, endOf);
+  // Only labels that can't go at their arrow's end compete for its start.
+  const starts = tally(lags.filter((l) => ends.get(endOf(l)) > 1), startOf);
+  const H = 12;
+  const placed = [];
+  const out = [];
+  for (const l of lags) {
+    let x;
+    let y;
+    let away; // which way to move along if it touches another
+    if (ends.get(endOf(l)) === 1) {
+      x = l.toLeft ? l.x2 - 5 - l.w : l.right2 + 5;
+      y = l.y2 - 15;
+      away = l.toLeft ? -1 : 1;
+    } else if (starts.get(startOf(l)) === 1) {
+      // Above the line where it leaves, or below if the arrow turns up through that spot.
+      x = l.fromRight ? l.right1 + (l.right1 === l.x1 ? 9 : 5) : l.x1 - 9 - l.w;
+      y = l.y2 > l.y1 ? l.y1 - 15 : l.y1 + 3;
+      away = l.fromRight ? 1 : -1;
+    } else {
+      x = l.exitX + 4;
+      y = (l.y1 + l.y2) / 2 - H / 2;
+      away = 1;
+    }
+    const touches = (box) => placed.some((p) => box.x < p.x + p.w + 2 && p.x < box.x + box.w + 2 && box.y < p.y + H && p.y < box.y + H);
+    for (let i = 0; i < 20 && touches({ x, y, w: l.w }); i++) x += away * (l.w + 3);
+    placed.push({ x, y, w: l.w });
+    out.push({ t: 'rect', x, y, w: l.w, h: H, r: 3, fill: pal.surface, stroke: l.color, strokeWidth: 0.8, name: `Lag ${l.s}` });
+    out.push({ t: 'text', x: x + l.w / 2, y: y + H / 2, s: l.s, size: 10, weight: 600, fill: l.color, anchor: 'middle', name: `Lag ${l.s} text` });
+  }
+  return out;
+}
+
+// Day numbers in runs of consecutive days, earliest first.
+function runsOf(days) {
+  const runs = [];
+  for (const n of [...new Set(days)].sort((a, b) => a - b)) {
+    const last = runs.at(-1);
+    if (last && n === last.to + 1) last.to = n;
+    else runs.push({ from: n, to: n });
+  }
+  return runs;
+}
+
 const rowKind = (task) => (task.computed.isSummary ? 'summary' : task.milestone ? 'milestone' : 'task');
 
 function taskRow(task, project, colorFn, state, extra = {}) {
@@ -421,7 +506,7 @@ function taskRow(task, project, colorFn, state, extra = {}) {
     poc: task.pocName,
     critical: c.critical,
     baseline: project.baseline?.tasks?.[task.id],
-    drag: !c.isSummary && !task.milestone && c.status !== 'complete',
+    drag: !c.isSummary && c.status !== 'complete',
     conflict: hasConflict(task),
     tip: tipFor(task, state),
     ...extra,
@@ -490,7 +575,7 @@ export function projectRows(project, state, colorFn, collapsed = new Set()) {
       const cross = projectOf.get(pred.id).id !== project.id;
       if (cross) addExternal(pred, 'This project depends on it');
       if (cross || shown.has(pred.id)) {
-        links.push({ from: pred.id, to: task.id, type: dep.type, cross, critical: pred.computed.critical && task.computed.critical, conflict: brokenLink(task, pred.id) });
+        links.push({ from: pred.id, to: task.id, type: dep.type, lag: dep.lag | 0, lagUnit: dep.lagUnit, cross, critical: pred.computed.critical && task.computed.critical, conflict: brokenLink(task, pred.id) });
       }
     }
   }
@@ -500,7 +585,7 @@ export function projectRows(project, state, colorFn, collapsed = new Set()) {
       for (const dep of task.deps) {
         if (!shown.has(dep.taskId)) continue;
         addExternal(task, 'Depends on this project');
-        links.push({ from: dep.taskId, to: task.id, type: dep.type, cross: true, critical: false, conflict: brokenLink(task, dep.taskId) });
+        links.push({ from: dep.taskId, to: task.id, type: dep.type, lag: dep.lag | 0, lagUnit: dep.lagUnit, cross: true, critical: false, conflict: brokenLink(task, dep.taskId) });
       }
     }
   }
@@ -547,7 +632,7 @@ export function portfolioRows(state, colorFn, { detail = 'key', collapsed = new 
       for (const dep of task.deps) {
         if (!shown.has(dep.taskId)) continue;
         const cross = !project.tasks.some((t) => t.id === dep.taskId);
-        if (detail === 'all' || cross) links.push({ from: dep.taskId, to: task.id, type: dep.type, cross, critical: false, conflict: brokenLink(task, dep.taskId) });
+        if (detail === 'all' || cross) links.push({ from: dep.taskId, to: task.id, type: dep.type, lag: dep.lag | 0, lagUnit: dep.lagUnit, cross, critical: false, conflict: brokenLink(task, dep.taskId) });
       }
     }
   }

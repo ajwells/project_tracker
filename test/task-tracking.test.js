@@ -217,7 +217,7 @@ test('tracked by dates: float is measured from the dates', () => {
 
 function setup() {
   const store = new StoreCore();
-  const projectId = store.createProject({ name: 'P' });
+  const projectId = store.createProject({ name: 'P', planning: false });
   const a = store.createTask(projectId, { name: 'A', start: '2026-01-14', duration: 5 });
   const find = (id) => store.snapshot().projects.flatMap((p) => p.tasks).find((t) => t.id === id);
   return { store, projectId, a, find };
@@ -236,7 +236,8 @@ test('a new task has no set start unless one is given', () => {
   assert.equal(find(child).startSet, false);
 });
 
-test('adding a link pulls a new task in, and typing a date takes over', () => {
+test('adding a link pulls a new task in, and typing a date takes over', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const { store, projectId, a, find } = setup();
   const b = store.createTask(projectId, { name: 'B', duration: 3 });
   store.updateTask(b, { deps: [{ taskId: a, type: 'FS', lag: -2 }] });
@@ -249,6 +250,7 @@ test('adding a link pulls a new task in, and typing a date takes over', () => {
   const edit = find(b).history.findLast((h) => h.type === 'edit');
   assert.equal(edit.changes.find((c) => c.field === 'startRule').to, 'Set by hand');
 
+  t.mock.timers.tick(11 * 60 * 1000); // past the window that merges quick edits
   store.updateTask(b, { startSet: false, actor: 'Ana' });
   assert.equal(find(b).computed.start, '2026-01-19');
   assert.equal(find(b).history.findLast((h) => h.type === 'edit').changes[0].to, 'Follows links');

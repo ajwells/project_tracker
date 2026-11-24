@@ -6,12 +6,12 @@ Covers the sessions of 2026-11-01 to 2026-11-23. Add new sessions at the end.
 
 ## Current state (2026-11-23)
 
-- **Last commit:** `ec6e3ad`, float into fixed-date tasks and conflict marks on the charts (2026-11-22). The user made it, and it also removed `project-tracker-export-2026-11-02.json` from the repo.
-- **Not committed:** the "Calendar days skip holidays" setting (2026-11-23), its tests and README entry, the fix for dialogs closing after a highlight (`openDialog` in `util.js`), and these updates to the log.
+- **Last commit:** `e6e140b`, the "Calendar days skip holidays" setting and the fix for dialogs closing after a highlight (2026-11-23). The user made it.
+- **Not committed:** dragging milestones and drag-to-reorder (2026-11-23, `public/js/reorder.js`, `browser-tests/reorder.test.js`), quieter history (2026-11-23, `addHistory` in `store-core.js`, `test/history.test.js`, `browser-tests/history.test.js`), holidays and lead/lag on the Gantt (2026-11-23, `chart/gantt.js`, `browser-tests/gantt-marks.test.js`), their README entries, and these updates to the log.
 - **The user's plans:** exports live in `debug/`, which is in `.gitignore`. `debug/project-tracker-export-2026-11-23.json` is the CSP V3 plan, and `debug/project-tracker-export-2026-11-02.json` the earlier test plan. Reproduce questions on these.
 - **Tests:**
-  - `npm test`: 273 pass.
-  - `npm run test:browser`: 205 pass in about 20s.
+  - `npm test`: 284 pass.
+  - `npm run test:browser`: 242 pass in about 25s.
 - **Running servers:** none on port 3000 as of 2026-11-22. The server serves `public/` from disk, so client changes only need a tab reload, but `public/shared/` also runs in the server, so it needs a restart after scheduler changes when `SAVE_DATA` is on. Port 5173 is the user's separate Needlepoint Tracker project, not part of this app. Leave it alone.
 
 ## Problems to handle
@@ -28,6 +28,8 @@ Found 2026-11-22 and deliberately left for later. Details are in that session's 
 5. **Negative float is checked loosely.** The brute-force check can't confirm the amount, because moving one task can be held up by another task's set start. Only hand-worked tests check the amounts. A stronger check would move the task together with what it drives.
 6. **Not tested:** the PowerPoint file with conflict badges opened in PowerPoint, conflict marks on phones, and the portfolio Gantt with conflicts.
 7. **Intermittent browser test failure:** "typing -2 after a double click saves -2" (`browser-tests/scheduling.test.js`, server storage) failed once in 4 full runs on 2026-11-23, then passed 12 times alone and in 3 more full runs. It double-clicks the lag field and types, with no dialog involved, so it isn't the dialog change made that day. The data-loss bug in the bug table also first showed as one rare failure, so look into it: run it in a loop under load with a per-test limit, as the Testing decisions describe.
+   - Seen again 2026-11-23 while testing reorder: 1 failure in 9 full runs.
+8. **A click straight after a bar drag can be ignored.** The bar drag in `mountGantt` (`views/charts.js`) ignores the click after a drag with a `dragged` flag cleared by `setTimeout(0)`. A browser can run that timer late (background or busy pages), and the next real click on the chart is dropped. Reorder had the same pattern and failed 2 of 4 full runs because of it; it now ends its guard on the next click or press instead (`swallowClick` in `reorder.js`). Bar drags haven't been seen failing, but should get the same fix. The "timers run late" test in `browser-tests/reorder.test.js` shows how to test it.
 
 **Finding more:** the suite tries 200 random plans per kind, which misses items 1 and 2. To run 5,000, copy the test with `sed 's/seed <= 200;/seed <= 5000;/' test/critical-path.test.js > test/zz-stress.tmp.test.js`, run it with `node --test`, then delete the copy. It takes about a minute. Items 1 and 2 are the only failures expected.
 
@@ -94,6 +96,9 @@ Older open items (security, `PORT` checks, mixed day units in summaries and prog
 12. **Working or calendar days:** `task.durationUnit` and `dep.lagUnit`.
 13. **Project default for day units:** `project.defaultDayUnit`, in project settings.
 14. **Test suites:** `npm run test:browser` added. Speed improved from 11.3s to about 2s for `npm test`, and from 132s to about 19s for browser tests.
+15. **Dragging milestones and reordering tasks (2026-11-23):** milestones drag along the Gantt like bars (move only). Tasks drag up and down a project's Gantt names and Tasks tab. See that session's entry.
+16. **Quieter history (2026-11-23):** quick edits merge, early edits fold into "created", **Still planning**, and **Show every change**. See that session's entry.
+17. **Holidays and lead/lag on the Gantt (2026-11-23):** shaded holiday bands and lag labels on links, each with a toolbar box. See that session's entry.
 
 ## Bugs found and fixed
 
@@ -116,6 +121,7 @@ Older open items (security, `PORT` checks, mixed day units in summaries and prog
 | Timeline dots 2px off the line | Pseudo-element is content-box | Corrected offsets |
 | **Link edits overwriting each other (data loss)** | Each save sends the task's whole link list, built from the last loaded data, so a second edit before the first returned undid it. Server storage on a slow connection only | Edits queue and apply to the saved list (`editLinks` in `drawer.js`). The panel shows pending edits on top |
 | A calendar link resent without a unit became working days | Missing unit treated as working | An existing link keeps its unit. A new one takes the project default |
+| A click right after a reorder drag was lost (2026-11-23, found in testing) | The guard that ignores the drop's own click was taken off by `setTimeout(0)`, which a busy or background page can run late, so it ate the next real click. Showed as 2 failures in 4 full browser runs | The guard ends on the first click or the next press, with no timer |
 | A dialog closed when highlighting text and letting go past its edge (2026-11-23). Reported as project settings closing while highlighting a holiday with the task panel open | A press that starts inside and is released on the backdrop reaches the dialog as a click, and any click on the dialog itself closed it. The panel doesn't matter: it happens alone too | `openDialog` closes only when the press also started on the backdrop |
 
 | **Browser test run could hang forever** | A restarting test server found its port taken, and its group's cleanup then stopped the already-stopped server. `stop()` checked only `exitCode`, but a killed process reports `signalCode` instead, including on Windows, so it waited for an exit that had already happened | `stop()` checks both. Restarting servers use ports below the system's handout range, and retry briefly if theirs is still busy |
@@ -345,3 +351,100 @@ The user asked why TU/EU Checkout at Crane in the CSP V3 plan had 10 days of flo
 - `browser-tests/layout.test.js`: the box saves, shows as saved when reopened, and clears.
 - Breakage checks: 5 of 5 caught (setting ignored, lags ignoring it, buffer unit judged by clock identity, buffers counted through holidays, the store dropping it).
 - Screenshot of the settings dialog with the CSP V3 plan.
+
+## Session of 2026-11-23 (later): dragging milestones and reordering tasks
+
+The user first asked why TU/EU Checkout at Crane (1.4) in CSP V3 had 1 day of float. It's right: CSP V3's holidays stop at Dec 27, so Fri Jan 1 is a working day. A milestone can sit on its predecessor's finish day, so Crane can finish Jan 1, "system at campbell" stays on its set Jan 1, and SIMO still starts Mon Jan 4. Getting 0 needs both Jan 1 as a holiday and **Follow links** on the milestone; the holiday alone pushes the milestone to Jan 4 and makes a conflict. The user then asked whether a task can start on its milestone predecessor's day: no, FS from a milestone starts the next working day, as in Microsoft Project; SS gives the same day. A per-project "milestones at the start of the day" setting was offered and not taken up.
+
+Then the user asked for milestones to drag on the Gantt like tasks, and for tasks to drag into a new order on the Gantt and Tasks tab.
+
+### How it works
+
+- **Milestones:** `taskRow` in `chart/gantt.js` now lets milestones drag, and the diamond carries `drag`. `mountGantt` moves them only (no right-edge resize), draws a dashed diamond as the ghost, and the tip says "Date:". A milestone saves `start` only, even if `trackBy` is `dates`. The date preview and Apply work as for bars.
+- **Store:** `moveTask` takes `before`, `after` or `into` with a `targetId` in the same project. Before or after takes the target's parent; into makes it the target's first subtask. It refuses moves next to or under the task itself or its subtasks, into a milestone, and across projects. History records a parent change, as indent does. The route passes `body.targetId`.
+- **Client:** `public/js/reorder.js` holds the drop rule (`placement`) and the drag (`dragToReorder`): 5px to start, a line where the task would go, auto-scroll near the edges, Esc cancels, and drops that leave the task in place send nothing. The Gantt uses the label column on a project's own chart, not the portfolio, and not the other projects' rows at the end. The Tasks tab uses whole rows, except buttons, and is off while filtered.
+
+### Decisions
+
+- **Top half drops above, bottom half below,** and the bottom half of an open summary goes first inside it, so the line between a summary and its first subtask means the same from either side. The bottom half of a summary's last subtask stays inside the summary; the top half of the next top-level row leaves it.
+- **Mouse only,** like bar drags: on touch a swipe must scroll. The panel's move and indent buttons remain for touch.
+- **Reordering saves at once,** without the date preview, like the move buttons, even though a new parent can change inherited links.
+
+### Testing
+
+- `test/api.test.js`: before, after and into, summaries bringing subtasks, history, and each refusal.
+- `browser-tests/reorder.test.js` (new, in `test:browser`), 11 scenarios in both storage modes: dragging milestones (saves, Esc, no resize, waits for Apply when others follow), Gantt reorder (above, into a summary, a summary with subtasks, onto its own subtasks, Esc), Tasks tab reorder (below, leaving a summary, filtered), clicks after drags, and a click straight after a drag with timers running late.
+- Breakage checks: with milestone drag and the reorder request switched off, 16 of 20 scenarios failed; the 4 that passed check that nothing changes. The late-timer test fails on the timer guard and passes with the fix.
+- Logic 274 pass. Browser 227 pass in 4 full runs in a row after the fix.
+
+### Not tested
+
+- Dragging in a long list that needs auto-scroll, dragging on the Gantt with the label column narrowed on a small window, and dark mode looks of the drop line.
+
+## Session of 2026-11-23 (later still): quieter history
+
+The user said the history fills up just entering a plan. The CSP V3 export had 109 entries across 7 tasks: dates tried back and forth (Aircraft Integration's start flipped about 20 times), settings undone, and each setup step logged alone. Five ways were suggested and the user chose four: merge quick edits, fold early edits into "created", a planning phase, and a display that can show every change. The fifth, checking whether arrow keys on date fields save each step, wasn't chosen.
+
+### How it works
+
+- **`addHistory` in `store-core.js`** takes the project and finds an entry to merge into (`mergeTarget`). The merged entry keeps the first `from` and latest `to` of each field, drops fields that ended where they started, records `lastAt`, and keeps each step in `steps` (each with its own author). It keeps at most 100 steps, the first and the latest, and counts the rest in `stepsDropped`.
+- **Rules:** an edit merges into the last entry if it's by the same person, within 10 minutes (`MERGE_WINDOW_MS`) of that entry's last change, and that entry is an edit with no note or the "created" entry. Edits with a note (links removed by a delete) stand alone. A reschedule caused by another task merges only with an earlier one for the same cause. One caused by the task's own edit (`selfCaused`) joins that edit. Posted updates always stand alone and end a run.
+- **Planning:** `project.planning`, stored only when on. New projects get it unless the request says otherwise. `setBaseline` turns it off, and `updateProject` takes it. While it's on, every edit and every reschedule of a task goes into its "created" entry, whoever makes it, however late, and past posted updates. Imports keep it only when `true`, so older exports and the sample projects aren't in planning.
+- **Import:** `parseHistory` keeps `lastAt`, `steps` and `stepsDropped`, and cleans each step like an entry. `SCHEMA_VERSION` is unchanged.
+- **Panel (`drawer.js`):** each entry shows where things ended up, with a time range and an "N edits" button that opens its steps (`ctx.openSteps`). **Show every change** (`ctx.historyDetail`) lists every step as its own entry instead. Entries left with nothing changed are hidden unless it's ticked. A "created" entry lists what it was set up with, without the "from". In planning, a note says changes are kept in "created". The count in the heading counts what's shown.
+- **Settings:** a **Still planning** box under History in project settings, ticked for new projects.
+
+### Decisions
+
+- **Merge in the store, keeping steps,** so the four choices fit together: the stored list is short, nothing is lost, and "Show every change" can still show it all. Exports don't shrink much, since steps are kept.
+- **The window slides:** it's measured from the entry's last change, so a long session of steady edits is one entry. Steps show the detail.
+- **Planning keeps changes in "created" rather than recording nothing,** so nothing is lost and turning it off needs no clean-up.
+- **Existing projects aren't put in planning,** and existing history isn't rewritten.
+- **Different people never merge,** except in planning. Everyone without a name is "Anonymous", so their edits do merge with each other.
+
+### Testing
+
+- `test/history.test.js` (new, 10 tests) uses mock timers for the window. It covers merging, fields put back, people, gaps and updates ending a run, folding into "created", reschedules caused by other tasks and by the task itself, planning and baselines, the setting both ways, the 100-step cap, import and export with junk steps, and action items.
+- Tests that check one entry per edit now make projects with `planning: false` and move the mock clock past the window (`actions`, `dependencies`, `task-tracking`, `day-units`). `api.test.js` makes its projects with planning off, and its history test now checks edits folding into "created".
+- `browser-tests/history.test.js` (new, both storage modes) covers one entry with its steps, **Show every change** with edits put back, and a new project in planning until it's switched off in settings. `browser-tests/actions.test.js` now expects the item's set-up edits in "created".
+- Breakage checks: with merging off, 8 of 10 logic tests and 6 of 6 browser tests failed. With planning off, 2 logic tests failed, and the browser planning test failed once a posted update was put between its edits. Before that change it passed, because quick edits fold into "created" anyway.
+- Logic 284 pass. Browser 233 pass in 3 full runs in a row. Screenshot of a merged entry opened, in the dark theme.
+
+### Not tested
+
+- Phones, the light theme, a project switched into planning with long existing histories, and two people editing one task at once in planning.
+
+### Open items
+
+- The user's CSP V3 history is unchanged, since existing history isn't rewritten. A one-off "tidy history" using the same rules was offered.
+
+## Session of 2026-11-23 (evening): holidays and lead/lag on the Gantt
+
+The user asked for holidays to show on the Gantt chart, and for each dependency's lead or lag days to show on it.
+
+### How it works
+
+- **`layoutGantt`** takes `holidays` (ISO dates) and `showLags`. Links now carry `lag` and `lagUnit` (`projectRows` and `portfolioRows`).
+- **Holidays:** days in view are grouped into runs (`runsOf`). Each run is one rect under everything, drawn above the weekend shading, with a "Holiday: …" or "Holidays: … – …" tooltip and a 4px mark along the bottom of the date header. Colors are `pal.holiday` and `pal.holidayMark`. They show at every zoom, in SVG, PNG and PowerPoint (no `skipPptx`), and in the export legend when a run is in view.
+- **Lead/lag labels:** for a link with a nonzero lag, a small outlined label ("+3d", "−2d" with a real minus sign, "+7cd") sits in the waiting task's row, just above the arrow's end. It's to the left of the bar for links into a start (FS, SS) and to the right for links into a finish (FF, SF).
+- **Several labeled links into one side of a task** (fixed the same evening, after the user saw them stacked on top of each other): those arrows share their end, so `lagLabelsFor` puts each label where its own arrow leaves its predecessor instead, above the line, or below it if the arrow turns up. Only labels that can't go at their end compete for a start. If they share a start too, the label goes beside the arrow's upright part. Any label that would still touch another moves along, away from its bar.
+- **Beside a milestone,** a label on its right side (an arrow leaving it, or an FF or SF arrow reaching it) starts after the milestone's date, which is drawn there. The milestone's geometry records where its date ends (`clearRight`). Fixed after the user saw a label overlapping the date; 2 scenarios (Fit, Day) check the gap, and fail on the code before. The label takes the arrow's color: red when critical or broken, blue across projects, gray otherwise. Labels are drawn over the arrows so a line never cuts through one.
+- **Toolbar:** **Lead/lag** (`ctx.gantt.lags`) on every Gantt. **Holidays** (`ctx.gantt.holidays`) only on a project's chart, and only when it has holidays. Both default on and go to exports through the export spec. The screen legend shows "Holiday" when bands are drawn.
+
+### Decisions
+
+- **Only a project's own chart shows holidays,** since each project has its own. The portfolio chart shows none.
+- **No label on links without a lead or lag,** so plain FS links stay uncluttered.
+- **Weekends are still shaded even when a project works weekends.** That was already so and wasn't changed. Worth fixing alongside this if it comes up.
+
+### Testing
+
+- `browser-tests/gantt-marks.test.js` (new, 4 scenarios): bands merged and labeled with the header mark and legend, in the export and off with the box; none for a project without holidays or on the portfolio; labels in each unit, in the export, off and back with the box; and labels beside the arrow's end, clear of the bar. Exports are read by catching the preview's SVG blob as the page makes it, since the page's security policy blocks fetching blobs.
+- Breakage checks: lag labels off failed 2, holidays off failed 1 (the rest don't involve holidays), and the export not passing holidays failed 1.
+- For the stacking fix, 3 more scenarios (Fit, Day and Week) with tasks waiting on two or three others: every label shows, none overlap, and each sits just past its own predecessor's bar in its row. With every label put at its arrow's end, the overlap check alone passed (the nudging spreads them out) but the placement check failed, so the test checks which arrow a label belongs to, not only that labels are apart.
+- Logic 284 pass. Browser 242 pass in 2 full runs in a row after the milestone fix. Screenshots of CSP V3 at week zoom and a lag sample at day zoom (dark), and both exports (light).
+
+### Not tested
+
+- The PowerPoint file opened in PowerPoint, phones, labels when arrows crowd together at fit zoom, and a lag label falling off the right edge of the chart.
+

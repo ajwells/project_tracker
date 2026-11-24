@@ -9,7 +9,7 @@ const call = (store, method, path, body = {}) => applyChange(store, method, path
 
 function setup() {
   const store = new StoreCore();
-  const projectId = store.createProject({ name: 'Plan' });
+  const projectId = store.createProject({ name: 'Plan', planning: false });
   const taskId = store.createTask(projectId, { name: 'Build', start: '2026-12-07', duration: 5, progress: 40, status: 'in_progress' });
   return { store, projectId, taskId };
 }
@@ -29,10 +29,12 @@ test('creates an action item with no dates, and records its creation', () => {
   assert.equal(action.history[0].author, 'Ann');
 });
 
-test('edits are recorded in history with who, from and to', () => {
+test('edits are recorded in history with who, from and to', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const { store, projectId } = setup();
   const id = store.createAction(projectId, { name: 'Ask legal' });
   call(store, 'PATCH', `/api/actions/${id}`, { pocName: 'Bo', pocContact: 'bo@example.com', notes: 'NDA', actor: 'Ann' });
+  t.mock.timers.tick(11 * 60 * 1000); // past the window that merges quick edits
   call(store, 'PATCH', `/api/actions/${id}`, { name: 'Ask legal about the NDA', actor: 'Ann' });
   const action = actionIn(store, id);
   assert.equal(action.pocName, 'Bo');

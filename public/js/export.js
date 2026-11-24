@@ -31,6 +31,8 @@ function ganttLayout(spec, options, rows = spec.build(exportColor).rows, links =
     showCritical: spec.showCritical,
     showBaseline: spec.showBaseline,
     showConflicts: spec.showConflicts,
+    holidays: spec.holidays,
+    showLags: spec.showLags,
     today: spec.today,
     title: options.title ? spec.title : null,
     subtitle: options.title ? spec.subtitle : null,

@@ -199,7 +199,11 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .pill.info { background: var(--accent-soft); color: var(--accent); }
 
 /* ---- Tables ---- */
-.table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); position: relative; }
+/* Where a task dragged up or down the list would go. */
+.drop-line { position: absolute; right: 0; height: 2px; background: var(--accent); pointer-events: none; z-index: 1; }
+.drop-line::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+body.reordering, body.reordering * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
 table.grid { width: 100%; border-collapse: collapse; }
 .grid th { position: sticky; top: 0; z-index: 2; padding: 8px 10px; background: var(--surface-2); border-bottom: 1px solid var(--border); text-align: left; font-size: 12px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
 .grid td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
@@ -289,6 +293,9 @@ table.grid { width: 100%; border-collapse: collapse; }
 .feed-item.update .feed-note { padding: 7px 10px; background: var(--surface-2); border-radius: 8px; margin-top: 4px; }
 .feed-change { font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere; }
 .feed-change s { color: var(--ink-3); }
+.feed-steps { padding: 0 6px; margin-left: 4px; min-height: 0; height: auto; font-size: 11.5px; color: var(--accent); }
+.feed-step-list { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.feed-item.update .feed-step-list { border-left: 0; border-right: 2px solid var(--border); padding: 0 8px 0 0; }
 
 /* ---- Dialogs ---- */
 dialog { padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }

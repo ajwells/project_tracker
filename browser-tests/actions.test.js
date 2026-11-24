@@ -62,7 +62,9 @@ for (const [mode, saving] of [['browser storage', undefined], ['server storage',
         const saved = await savedAction(page, id);
         assert.equal(saved.pocName, 'Di');
         assert.equal(saved.status, 'blocked');
-        assert.deepEqual(saved.history.map((e) => e.type), ['create', 'edit', 'edit', 'update']);
+        // Filling it in straight after adding it is part of adding it.
+        assert.deepEqual(saved.history.map((e) => e.type), ['create', 'update']);
+        assert.deepEqual(saved.history[0].changes.map((c) => c.field).sort(), ['pocName', 'status']);
       });
       await soon(async () => {
         const feed = await page.$eval('.drawer .feed', (el) => el.textContent);

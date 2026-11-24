@@ -16,6 +16,8 @@ export function openProjectDialog(project = null) {
   const weekends = h('input', { type: 'checkbox', checked: !!project?.calendar?.workWeekends });
   const holidays = h('textarea', { name: 'holidays', rows: 2, placeholder: '2026-12-25, 2027-01-01' }, (project?.calendar?.holidays ?? []).join(', '));
   const skipHolidays = h('input', { type: 'checkbox', name: 'calendarDaysSkipHolidays', checked: !!project?.calendar?.calendarDaysSkipHolidays });
+  // New projects start out being planned.
+  const planning = h('input', { type: 'checkbox', name: 'planning', checked: project ? !!project.planning : true });
   const dayUnit = h('select', { name: 'defaultDayUnit' },
     h('option', { value: 'working', selected: project?.defaultDayUnit !== 'calendar' }, 'Working days'),
     h('option', { value: 'calendar', selected: project?.defaultDayUnit === 'calendar' }, 'Calendar days'));
@@ -46,6 +48,7 @@ export function openProjectDialog(project = null) {
       description: description.value,
       calendar: { workWeekends: weekends.checked, holidays: dates, calendarDaysSkipHolidays: skipHolidays.checked },
       defaultDayUnit: dayUnit.value,
+      planning: planning.checked,
       ...(color ? { color } : {}),
     };
     if (project) {
@@ -89,6 +92,9 @@ export function openProjectDialog(project = null) {
         h('small', {}, 'Calendar-day durations and lags count every day except these holidays. Weekends still count. Tasks counting calendar days move when you change this.'))),
       field('New tasks and links count', dayUnit),
       h('p', { class: 'small muted' }, 'Existing tasks and links keep what they count. You can still change any task or link on its own.'),
+      h('h3', {}, 'History'),
+      h('label', { class: 'check' }, planning, h('span', {}, 'Still planning',
+        h('small', {}, 'While the plan is being entered, changes to each task are kept in its "created" entry instead of being listed one by one. Setting a baseline turns this off.'))),
       project?.baseline ? h('div', { class: 'row', style: { justifyContent: 'space-between' } },
         h('span', { class: 'small muted' }, `Baseline saved ${fmtDate(project.baseline.at.slice(0, 10), true)}`),
         h('button', {

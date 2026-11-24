@@ -61,12 +61,19 @@ Browsers only allow copying images from HTTPS or localhost pages. Over a plain n
 - **Critical path and float**, calculated across projects
 - **Summary tasks, milestones and baselines**
 - **Selected task highlighted** on the Gantt chart and timeline while its panel is open. The highlight never appears in exports
-- **Gantt charts**: drag a bar to move it or its right edge to resize (mouse only, Esc cancels), and zoom from days to quarters
+- **Gantt charts**: drag a bar or milestone to move it, or a bar's right edge to resize (mouse only, Esc cancels), and zoom from days to quarters
+- **Holidays and lead/lag on the Gantt chart**: a project's holidays are shaded, with days in a row as one band and a mark in the date header. Each link with a lead or lag is labeled where its arrow reaches the waiting task, such as "+3d", "−2d" or "+7cd" for calendar days. The **Holidays** and **Lead/lag** boxes in the toolbar turn them off, in exports too. Holidays show on a project's own chart, not the portfolio's, since each project has its own
+- **Drag tasks into a new order** on a project's Gantt chart (by the task names) or its Tasks tab. Drop on the top half of a row to go above it, or the bottom half to go below it. The bottom half of an open summary puts the task first inside it. A summary takes its subtasks along. Mouse only, Esc cancels, and not while the task list is filtered. The task panel's move and indent buttons still work everywhere
 - **See a date change's effect first**: if changing a date in the task panel or on the Gantt would move other tasks or cause a conflict for one, the change waits for **Apply** or **Cancel**. The panel lists what would change, and the Gantt outlines where tasks would go. A change that affects nothing else saves right away
 - **Timelines** built for slides: milestones above a date band, phases and key tasks below
 - **Cross-project links**: tasks can depend on tasks in other projects. The Links tab shows who is waiting on whom and how much buffer each link has
 - **Action items**: each project has an **Action items** tab for follow-ups with no dates. Like tasks, they have a name, current POC, status, progress, notes, history and posted updates. They stay off the Gantt chart and timeline and don't count toward the project's progress. The list shows each item's latest update, and completed items can be hidden
 - **Task history**: every field change is recorded with who, when, from and to. You can also post written updates, and dates moved by another task's change are logged with the cause
+- **History that doesn't fill up while you enter a plan**:
+  - Changes one person makes to a task within 10 minutes of each other are one entry, from where each field started to where it ended. A field put back where it was drops out
+  - Changes straight after creating a task are part of its "created" entry, which lists what it was set up with
+  - **Still planning**, in project settings and on for new projects, keeps every change in each task's "created" entry until you turn it off or set a baseline. Projects from before this setting aren't in planning
+  - A merged entry keeps each step: click its "N edits" to see them, or tick **Show every change** to list them all. Posted updates and tasks moved by other tasks always stay separate
 - **Current POC** on every task, with contact details, filtering, and a record of past POCs in the history
 - **Import and export** of all projects as one JSON file
 - **Live updates** between open tabs, and between devices when the server is saving data
