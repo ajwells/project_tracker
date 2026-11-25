@@ -61,9 +61,27 @@ function morphChildren(current, next) {
   }
 }
 
+// Saves sent to the server and not yet answered. While any are out, a redraw can come
+// from data older than what someone just entered.
+export const saving = { count: 0 };
+
+// A field the person has just changed counts as showing that value, as if drawn with it,
+// and is marked as waiting on its save. Without this, a redraw from older data would put
+// the old value back until the reply came, and putting the field back to the old value
+// meanwhile would look like nothing typed, so the reply would overwrite it.
+if (typeof document !== 'undefined') {
+  document.addEventListener('change', (event) => {
+    const field = event.target;
+    if (!field.matches?.('input, textarea, select')) return;
+    field.rendered = field.value;
+    field.waiting = true;
+  }, true);
+}
+
 // Makes `current` match `next` while keeping its elements, so an update can't take
 // away the field someone is in or the button they're pressing. Text someone has
-// typed into the focused field and not yet saved is left alone.
+// typed into the focused field and not yet saved is left alone, and so is a field
+// they've changed while its save is still out.
 export function morph(current, next) {
   if (current.nodeType !== 1) {
     if (current.data !== next.data) current.data = next.data;
@@ -78,9 +96,11 @@ export function morph(current, next) {
   if ('selected' in current && current.selected !== next.selected) current.selected = next.selected;
   if (current.matches('input, textarea, select')) {
     const unsaved = current === document.activeElement && current.value !== String(current.rendered ?? current.defaultValue);
-    if (!unsaved) {
+    const waiting = current.waiting && saving.count > 0;
+    if (!unsaved && !waiting) {
       if (current.value !== next.value) current.value = next.value;
       current.rendered = next.value;
+      current.waiting = false;
     }
   }
 }

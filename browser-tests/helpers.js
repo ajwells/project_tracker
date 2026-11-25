@@ -171,7 +171,8 @@ export async function loadProjects(page, url, projects, hash) {
   }, projects);
   await page.goto(`${url}/${hash}`, { waitUntil: 'domcontentloaded' });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.main');
+  // .main and .sidebar are there, empty, before the projects load; .brand comes with them.
+  await page.waitForSelector('.sidebar .brand');
 }
 
 export const savedProjects = (page) => page.evaluate(async () => {

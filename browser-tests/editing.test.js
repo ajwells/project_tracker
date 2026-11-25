@@ -96,6 +96,28 @@ for (const [mode, saving] of [['browser storage', undefined], ['server storage',
       });
     });
 
+    // While a save was out, a redraw from older data put the field's old value back until
+    // the reply came. Putting the field back to that value meanwhile then looked like
+    // nothing typed, and the reply wrote the change back over it.
+    scenario('a field put back before its last save returns stays put back, and saves', async ({ page, saved }) => {
+      await slowSaves(page);
+      await click(page, '.drawer [name=pocName]');
+      await type(page, 'Bo');
+      await page.keyboard.press('Tab');
+      await pause(100);
+      assert.equal(await value(page, '.drawer [name=pocName]'), 'Bo', 'what was typed stays while it saves');
+      await click(page, '.drawer [name=pocName]');
+      await selectAll(page);
+      await page.keyboard.press('Backspace');
+      await pause(700); // the first save's reply lands while the field is still being edited
+      assert.equal(await value(page, '.drawer [name=pocName]'), '');
+      await page.keyboard.press('Tab');
+      await soon(async () => {
+        assert.equal((await saved()).pocName, '');
+        assert.equal(await value(page, '.drawer [name=pocName]'), '');
+      });
+    });
+
     scenario('adding links faster than they save keeps every one', async ({ page, saved }) => {
       await slowSaves(page);
       const [, taskPicker] = await page.$$('.dep-add select');

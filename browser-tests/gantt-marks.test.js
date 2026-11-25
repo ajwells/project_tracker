@@ -30,7 +30,12 @@ const projects = () => {
     task('work', { startSet: false, duration: 5, deps: [{ taskId: 'gate', type: 'FS', lag: 2 }, { taskId: 'prep', type: 'FS', lag: -1 }] }),
     task('sign', { startSet: false, duration: 0, milestone: true, deps: [{ taskId: 'work', type: 'FF', lag: 3 }] }),
   ]);
-  return [plan, project('other', [task('solo', { start: '2026-12-07', duration: 3 })]), many, gates];
+  // The first task on the chart has a lead, so its label would sit left of the chart's start.
+  const edge = project('edge', [
+    task('later', { start: '2026-12-08', duration: 4 }),
+    task('first', { startSet: false, duration: 3, deps: [{ taskId: 'later', type: 'SS', lag: -1 }] }),
+  ]);
+  return [plan, project('other', [task('solo', { start: '2026-12-07', duration: 3 })]), many, gates, edge];
 };
 
 const holidayBands = (page) => page.$$eval('.pane-body rect[data-tip^="Holiday"]', (els) => els.map((el) => el.getAttribute('data-tip')));
@@ -159,6 +164,17 @@ describe('holidays and lead/lag on the Gantt chart', { concurrency: CONCURRENCY 
       assert.ok(gaps.arriving >= 2, `"+3d" starts ${gaps.arriving}px after sign's date`);
     });
   }
+
+  scenario("a label near the chart's start stays clear of the names column", '#/p/edge/gantt', async (page) => {
+    await page.waitForSelector('.pane-body');
+    await pressText(page, '.seg button', 'Week');
+    await soon(async () => assert.deepEqual(await lagLabels(page), ['−1d']));
+    const { labelX, chartStart } = await page.evaluate(() => {
+      const text = [...document.querySelectorAll('.pane-body text')].find((el) => el.textContent === '−1d');
+      return { labelX: text.previousElementSibling.getBBox().x, chartStart: document.querySelector('.pane-labels').viewBox.baseVal.width };
+    });
+    assert.ok(labelX >= chartStart, `label starts at ${labelX}, under the names column, which ends at ${chartStart}`);
+  });
 
   scenario('a label sits beside the end of its arrow, clear of the task it points at', '#/p/proj/gantt', async (page) => {
     await page.waitForSelector('.pane-body');

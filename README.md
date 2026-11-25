@@ -24,6 +24,19 @@ In WebStorm, open `package.json` and click the run arrow next to `start`. If `no
 | `FIRM_LEADS=false` | Treats negative SS and SF links by the standard definition (default `true`, see [How scheduling works](#how-scheduling-works)) |
 | `SAVE_DATA=true` | Stores projects on the server and shares them (default `false`, which stores them in each browser) |
 
+### Without a server
+
+```
+npm run build:static
+```
+
+This writes `dist/project-tracker.html`, one file with everything in it. Open it straight from disk by double-clicking it, or put it on any web host. No server or install is needed to use it.
+
+- Projects are kept in the browser, as with `SAVE_DATA=false`. They aren't shared, and clearing the browser's data deletes them, so use **Export all projects** as a backup.
+- Each browser keeps its own copy. Opening the file from a different folder, or from a web address, can also count as a separate copy.
+- Negative SS and SF links are firm, as with the server's default. The `FIRM_LEADS` setting isn't available.
+- Rebuild it after changing the code. `dist/` isn't kept in git.
+
 ### Where data is stored
 
 | | `SAVE_DATA=false` (default) | `SAVE_DATA=true` |
@@ -155,6 +168,7 @@ The browser tests click, type and swipe with human timing, and catch what `npm t
 | `src/server.js` | HTTP API, live updates, static files |
 | `public/js/chart/` | Chart layout, plus SVG and PowerPoint renderers |
 | `public/js/views/` | Screens |
+| `scripts/build-static.js` | Builds the single-file version that runs without a server |
 | `public/vendor/` | [PptxGenJS](https://github.com/gitbrent/PptxGenJS) 4.0.1 (MIT), included so there is nothing to install |
 
 With `SAVE_DATA` on, your data lives in `data/`, which git ignores.

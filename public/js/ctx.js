@@ -1,10 +1,14 @@
 // Shared app state and server access, used by every view.
 
-import { downloadBlob, toast } from './util.js';
+import { downloadBlob, saving, toast } from './util.js';
 import { LocalStore, STORAGE_KEY } from './local-store.js';
 import { applyChange } from '../shared/routes.js';
 import { isFirmLead } from '../shared/scheduler.js';
 import { HttpError } from '../shared/store-core.js';
+
+// Set by the single-file build (npm run build:static), which runs with no server at all,
+// keeping projects in this browser as when the server isn't saving data.
+export const STATIC = globalThis.PROJECT_TRACKER_STATIC === true;
 
 const storage = {
   get(key, fallback = null) {
@@ -116,9 +120,7 @@ async function openLocalStore(serverState) {
 }
 
 export async function refresh() {
-  const res = await fetch('/api/state');
-  if (!res.ok) throw new Error('Could not load your projects.');
-  const snapshot = await res.json();
+  const snapshot = STATIC ? { saving: false, firmLeads: true, projects: [] } : await fetchState();
   const useLocal = snapshot.saving === false;
   // The server restarted with the other SAVE_DATA setting, so start over in that mode.
   if (ctx.data && useLocal !== !!local) {
@@ -134,6 +136,12 @@ export async function refresh() {
     applySnapshot(snapshot);
   }
   ctx.render();
+}
+
+async function fetchState() {
+  const res = await fetch('/api/state');
+  if (!res.ok) throw new Error('Could not load your projects.');
+  return res.json();
 }
 
 // Downloads the export from this browser's copy. The server has none to offer.
@@ -164,30 +172,46 @@ function applyLocally(method, path, body) {
 // just check the result; the view re-renders from server truth either way.
 export async function api(method, path, body = {}) {
   if (local) return applyLocally(method, path, body);
+  let json = null;
+  let failed = null;
+  // Counted while out, so fields changed meanwhile keep what was typed (see `morph`).
+  saving.count++;
   try {
     const res = await fetch(path, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, actor: ctx.actor || undefined }),
     });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      toast(json.error || 'That change could not be saved.', 'error');
-      ctx.render();
-      return null;
-    }
-    applySnapshot(json);
-    ctx.render();
-    return json;
+    json = await res.json().catch(() => ({}));
+    if (!res.ok) failed = json.error || 'That change could not be saved.';
   } catch {
-    toast('Could not reach the server. Your change was not saved.', 'error');
+    failed = 'Could not reach the server. Your change was not saved.';
+  } finally {
+    saving.count--;
+  }
+  if (failed) {
+    toast(failed, 'error');
     ctx.render();
     return null;
   }
+  applySnapshot(json);
+  ctx.render();
+  return json;
 }
 
 // Picks up changes made in another tab or on another device.
 export function listenForChanges() {
+  if (!STATIC) listenToServer();
+  // Another tab changed this browser's copy. A null key means storage was cleared.
+  addEventListener('storage', (event) => {
+    if (!local || (event.key !== STORAGE_KEY && event.key !== null)) return;
+    local.load();
+    ctx.data = local.snapshot();
+    ctx.render();
+  });
+}
+
+function listenToServer() {
   const events = new EventSource('/api/events');
   let connected = false;
   // Reconnecting means the server may have restarted, so reload what it holds now.
@@ -198,11 +222,4 @@ export function listenForChanges() {
   events.onmessage = (event) => {
     if (!local && ctx.data && Number(event.data) > ctx.data.revision) refresh().catch(() => {});
   };
-  // Another tab changed this browser's copy. A null key means storage was cleared.
-  addEventListener('storage', (event) => {
-    if (!local || (event.key !== STORAGE_KEY && event.key !== null)) return;
-    local.load();
-    ctx.data = local.snapshot();
-    ctx.render();
-  });
 }

@@ -6,12 +6,13 @@ Covers the sessions of 2026-11-01 to 2026-11-23. Add new sessions at the end.
 
 ## Current state (2026-11-23)
 
-- **Last commit:** `e6e140b`, the "Calendar days skip holidays" setting and the fix for dialogs closing after a highlight (2026-11-23). The user made it.
-- **Not committed:** dragging milestones and drag-to-reorder (2026-11-23, `public/js/reorder.js`, `browser-tests/reorder.test.js`), quieter history (2026-11-23, `addHistory` in `store-core.js`, `test/history.test.js`, `browser-tests/history.test.js`), holidays and lead/lag on the Gantt (2026-11-23, `chart/gantt.js`, `browser-tests/gantt-marks.test.js`), their README entries, and these updates to the log.
+- **Last commit:** `68f9a72` (2026-11-23), made by the user: dragging milestones and drag-to-reorder, quieter history, holidays and lead/lag on the Gantt, and their fixes.
+- **Not committed:** the single-file build (2026-11-24, `scripts/build-static.js`, `browser-tests/static.test.js`), the fix for fields reverting while a save is out (2026-11-24, `morph` and `saving` in `util.js`, `api` in `ctx.js`), lead/lag labels kept inside the chart, the test race fixes, their README entries, and these updates to the log.
 - **The user's plans:** exports live in `debug/`, which is in `.gitignore`. `debug/project-tracker-export-2026-11-23.json` is the CSP V3 plan, and `debug/project-tracker-export-2026-11-02.json` the earlier test plan. Reproduce questions on these.
 - **Tests:**
   - `npm test`: 284 pass.
-  - `npm run test:browser`: 242 pass in about 25s.
+  - `npm run test:browser`: 248 pass in about 25s.
+  - `npm run build:static` writes `dist/project-tracker.html` (about 800 KB). `dist/` is in `.gitignore`.
 - **Running servers:** none on port 3000 as of 2026-11-22. The server serves `public/` from disk, so client changes only need a tab reload, but `public/shared/` also runs in the server, so it needs a restart after scheduler changes when `SAVE_DATA` is on. Port 5173 is the user's separate Needlepoint Tracker project, not part of this app. Leave it alone.
 
 ## Problems to handle
@@ -99,6 +100,7 @@ Older open items (security, `PORT` checks, mixed day units in summaries and prog
 15. **Dragging milestones and reordering tasks (2026-11-23):** milestones drag along the Gantt like bars (move only). Tasks drag up and down a project's Gantt names and Tasks tab. See that session's entry.
 16. **Quieter history (2026-11-23):** quick edits merge, early edits fold into "created", **Still planning**, and **Show every change**. See that session's entry.
 17. **Holidays and lead/lag on the Gantt (2026-11-23):** shaded holiday bands and lag labels on links, each with a toolbar box. See that session's entry.
+18. **Single-file build (2026-11-24):** `npm run build:static` makes one HTML file that runs with no server. See that session's entry.
 
 ## Bugs found and fixed
 
@@ -122,6 +124,7 @@ Older open items (security, `PORT` checks, mixed day units in summaries and prog
 | **Link edits overwriting each other (data loss)** | Each save sends the task's whole link list, built from the last loaded data, so a second edit before the first returned undid it. Server storage on a slow connection only | Edits queue and apply to the saved list (`editLinks` in `drawer.js`). The panel shows pending edits on top |
 | A calendar link resent without a unit became working days | Missing unit treated as working | An existing link keeps its unit. A new one takes the project default |
 | A click right after a reorder drag was lost (2026-11-23, found in testing) | The guard that ignores the drop's own click was taken off by `setTimeout(0)`, which a busy or background page can run late, so it ate the next real click. Showed as 2 failures in 4 full browser runs | The guard ends on the first click or the next press, with no timer |
+| A field showed its old value while its save was out, and putting it back meanwhile was lost (2026-11-24, server storage, found when a new history test failed once in a full run) | A redraw from older data, which comes right after a change, put the old value in the field until the reply. Clearing it back to that value then looked like nothing typed, so the reply wrote the change back over it | A field the person changes counts as showing that value, and keeps it while any save is out (`saving.count`, kept by `api`) |
 | A dialog closed when highlighting text and letting go past its edge (2026-11-23). Reported as project settings closing while highlighting a holiday with the task panel open | A press that starts inside and is released on the backdrop reaches the dialog as a click, and any click on the dialog itself closed it. The panel doesn't matter: it happens alone too | `openDialog` closes only when the press also started on the backdrop |
 
 | **Browser test run could hang forever** | A restarting test server found its port taken, and its group's cleanup then stopped the already-stopped server. `stop()` checked only `exitCode`, but a killed process reports `signalCode` instead, including on Windows, so it waited for an exit that had already happened | `stop()` checks both. Restarting servers use ports below the system's handout range, and retry briefly if theirs is still busy |
@@ -447,4 +450,37 @@ The user asked for holidays to show on the Gantt chart, and for each dependency'
 ### Not tested
 
 - The PowerPoint file opened in PowerPoint, phones, labels when arrows crowd together at fit zoom, and a lag label falling off the right edge of the chart.
+
+## Session of 2026-11-24: a version that runs without the server
+
+The user asked for a static version that runs without the server.
+
+### How it works
+
+- **`scripts/build-static.js`** (`npm run build:static`, or with an output path) writes `dist/project-tracker.html`. It puts `styles.css` in a `<style>`, the favicon in a data URL, and PptxGenJS and the app's 23 modules into one loader script, with the PptxGenJS license in a comment.
+- **Modules from disk:** browsers won't load modules for a `file://` page, and a single file can't hold separate ones. The loader makes a blob URL of each module and adds an import map from each module's place in the app to its blob, then imports `js/app.js`. The build rewrites only import paths, making them absolute under a made-up address (`https://project-tracker.invalid/`) that the import map matches. Nothing is fetched from it. Every source goes in as JSON with `<` escaped, so nothing in it can end the script early.
+- **The app:** the loader sets `window.PROJECT_TRACKER_STATIC`, which `ctx.js` exports as `STATIC`. With it, `refresh` starts from a "not saving" state without fetching `/api/state`, and `listenForChanges` skips the server's event stream but keeps syncing other tabs through storage events. Everything else already worked without a server through `LocalStore`. The banner says "Saved only in this browser." The sidebar logo now uses the page's icon link, since it was the one file still asked for by path.
+
+### Decisions
+
+- **One file** over a folder for a static host, since it also opens from disk and is easy to pass around.
+- **Blob modules with an import map** over writing a bundler, so the code runs exactly as written. Only import paths change.
+- **Firm leads stay on,** as the server's default. There's no setting for them in the file.
+- **`dist/` isn't kept in git.** It's built from the code.
+
+### Found along the way
+
+- **Fields reverting while a save is out (a real bug, now fixed).** A new history test failed once in a full run, in server storage. Tracing it showed that right after a field is changed, a redraw from the not-yet-updated data put the old value back until the server replied. On a slow connection, what you typed disappeared for a moment. Putting the field back to the old value meanwhile then counted as nothing typed, and the reply overwrote it. Fix: a `change` listener marks the field as showing its new value and waiting, and `morph` leaves a waiting field alone while `saving.count` (kept by `api` around each request) is above zero. A failed save still ends with the server's value and an error message. New test in `editing.test.js` holds each save back 400ms: it failed on the old code, both when checking the field right after Tab and when checking it after the reply.
+- **Two test races, not app bugs.** The storage tests waited for `.sidebar`, which exists empty before the projects load, so a slow load could find no buttons. `open` in `storage.test.js`, `loadProjects` in `helpers.js` and the new static test now wait for `.sidebar .brand`, which is drawn with the projects. The import test waited a fixed 300ms before clicking **Import**, which stays disabled until the file is read, and clicking it disabled does nothing. It now waits for the button to be enabled.
+- **A lead/lag label cut off at the chart's left edge,** seen on the sample plan in the static build's screenshot. Labels are now kept between the names column and the chart's right edge. A test at Week zoom failed without this (the label started at 330, under the names column ending at 340).
+
+### Testing
+
+- `browser-tests/static.test.js` (new, in `test:browser`) builds the file into a temporary folder and opens it from disk. It checks that the app starts with the banner and the PowerPoint library, that a project and task are kept and come back after a reload, that sample projects load, the Gantt draws and an export preview is made, and that nothing is requested except `file:`, `blob:` and `data:` URLs. No console errors.
+- Logic 284 pass. Browser 248 pass in 3 full runs in a row. Screenshot of the file opened from disk with the sample plan's Gantt.
+
+### Not tested
+
+- Browsers other than Chrome. Firefox and Safari support import maps and blob modules, but opening the file from disk wasn't tried in them.
+- The file on a web host, PowerPoint download and clipboard copy from `file://`, and phones.
 

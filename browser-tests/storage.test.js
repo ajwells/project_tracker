@@ -42,7 +42,8 @@ const bannerShown = (page) => page.$eval('.save-banner', (b) => !b.hidden && b.g
 const open = async (url, viewport = { width: 1280, height: 800 }) => {
   const page = await newPage(browser, viewport);
   await page.goto(url, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.sidebar');
+  // The sidebar is there, empty, before the projects load; .brand is drawn with them.
+  await page.waitForSelector('.sidebar .brand');
   return page;
 };
 const hash = async (page, value) => {
@@ -207,7 +208,7 @@ describe('where projects are kept', { concurrency: 3 }, () => {
       await lan.setViewport({ width: 1280, height: 800 });
       await lan.emulateFocusedPage(true);
       await lan.goto(`http://${address}:${server.port}`, { waitUntil: 'domcontentloaded' });
-      await lan.waitForSelector('.sidebar');
+      await lan.waitForSelector('.sidebar .brand');
       assert.match(await main(lan), /Plan your first project/);
       await newProject(lan, 'Over plain HTTP');
       await lan.close();
@@ -236,7 +237,8 @@ describe('where projects are kept', { concurrency: 3 }, () => {
       await pressText(other, '.sidebar button', 'Import projects');
       await other.waitForSelector('dialog input[type=file]');
       await (await other.$('dialog input[type=file]')).uploadFile(join(downloads, name));
-      await pause(300);
+      // Import stays disabled until the file is read, and clicking it then does nothing.
+      await other.waitForFunction(() => [...document.querySelectorAll('dialog button')].some((b) => b.textContent === 'Import' && !b.disabled));
       await other.evaluate(() => [...document.querySelectorAll('dialog input[type=radio]')].find((r) => /replace/i.test(r.value)).click());
       await pressText(other, 'dialog button', 'Import');
       await soon(async () => assert.match(await other.evaluate(() => [...document.querySelectorAll('dialog[open]')].at(-1)?.textContent ?? ''), /No backup copy is made/));
@@ -318,7 +320,7 @@ describe('where projects are kept', { concurrency: 3 }, () => {
         for (const p of JSON.parse(localStorage.getItem('tracker.store')).projects) await api('DELETE', `/api/projects/${p.id}`);
       });
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('.sidebar');
+      await page.waitForSelector('.sidebar .brand');
       await pause(300);
       assert.ok(!(await sidebar(page)).includes('On the server'));
       await newProject(page, 'Local again');

@@ -300,7 +300,7 @@ export function layoutGantt({
       dash: link.cross ? '4 3' : undefined,
     });
   }
-  regions.body.push(...routes, ...broken, ...lagLabelsFor(lags, pal), ...rings);
+  regions.body.push(...routes, ...broken, ...lagLabelsFor(lags, pal, labelWidth + 2, totalW - 2), ...rings);
 
   // ---- today ----
   if (todayN >= startN && todayN <= endN) {
@@ -440,7 +440,7 @@ function tipFor(task, state, projectName) {
 // so their labels go where each arrow leaves its predecessor instead, or for arrows that
 // share both ends, beside the arrow's upright part. Labels that would still touch are
 // moved along, away from the bar they belong to.
-function lagLabelsFor(lags, pal) {
+function lagLabelsFor(lags, pal, minX, maxX) {
   const tally = (list, key) => list.reduce((m, l) => m.set(key(l), (m.get(key(l)) ?? 0) + 1), new Map());
   const endOf = (l) => `${l.link.to}|${l.toLeft}`;
   const startOf = (l) => `${l.link.from}|${l.fromRight}`;
@@ -469,7 +469,15 @@ function lagLabelsFor(lags, pal) {
       away = 1;
     }
     const touches = (box) => placed.some((p) => box.x < p.x + p.w + 2 && p.x < box.x + box.w + 2 && box.y < p.y + H && p.y < box.y + H);
-    for (let i = 0; i < 20 && touches({ x, y, w: l.w }); i++) x += away * (l.w + 3);
+    // Kept inside the chart, where the names column or the edge would cut it off.
+    const inside = () => {
+      x = Math.min(Math.max(x, minX), maxX - l.w);
+    };
+    inside();
+    for (let i = 0; i < 20 && touches({ x, y, w: l.w }); i++) {
+      x += away * (l.w + 3);
+      inside();
+    }
     placed.push({ x, y, w: l.w });
     out.push({ t: 'rect', x, y, w: l.w, h: H, r: 3, fill: pal.surface, stroke: l.color, strokeWidth: 0.8, name: `Lag ${l.s}` });
     out.push({ t: 'text', x: x + l.w / 2, y: y + H / 2, s: l.s, size: 10, weight: 600, fill: l.color, anchor: 'middle', name: `Lag ${l.s} text` });

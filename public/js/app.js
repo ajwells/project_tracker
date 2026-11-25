@@ -1,4 +1,4 @@
-import { api, ctx, exportFromBrowser, listenForChanges, refresh } from './ctx.js';
+import { api, ctx, exportFromBrowser, listenForChanges, refresh, STATIC } from './ctx.js';
 import { attachTips, fmtRange, h, hideTip, icon, plural, toast } from './util.js';
 import { currentMode, projectColor } from './chart/core.js';
 import { renderTasks } from './views/tasks.js';
@@ -19,9 +19,12 @@ const main = h('main', { class: 'main' });
 const drawerHost = h('div');
 const scrim = h('div', { class: 'scrim', onclick: () => shell.classList.remove('nav-open') });
 const shell = h('div', { class: 'shell' }, sidebar, scrim, main);
+// The page's own icon, which the single-file build carries inside the page.
+const logo = document.querySelector('link[rel=icon]')?.getAttribute('href') ?? '/favicon.svg';
+
 const saveBanner = h('div', { class: 'save-banner', role: 'alert' },
   icon('alert'),
-  h('span', {}, h('strong', {}, 'Not saved on the server.'), ' Your projects are only in this browser, and clearing its data deletes them. ',
+  h('span', {}, h('strong', {}, STATIC ? 'Saved only in this browser.' : 'Not saved on the server.'), ' Your projects are only in this browser, and clearing its data deletes them. ',
     h('a', { href: '/api/export', download: true, onclick: exportFromBrowser }, 'Export all projects'), ' as a backup.'));
 saveBanner.hidden = true;
 app.append(saveBanner, shell, drawerHost);
@@ -66,7 +69,7 @@ function renderSidebar(route) {
   const mode = currentMode();
   const { projects } = ctx.data;
   sidebar.replaceChildren(
-    h('div', { class: 'brand' }, h('img', { src: '/favicon.svg', alt: '' }), 'Project Tracker'),
+    h('div', { class: 'brand' }, h('img', { src: logo, alt: '' }), 'Project Tracker'),
     h('a', { class: 'nav-item', href: '#/', 'aria-current': !route.projectId ? 'page' : null }, icon('grid'), 'All projects'),
     h('div', { class: 'nav-label' }, 'Projects',
       h('button', { class: 'btn ghost icon', style: { minHeight: '26px', minWidth: '26px', padding: '2px' }, 'aria-label': 'New project', title: 'New project', onclick: () => openProjectDialog() }, icon('plus'))),
